@@ -269,7 +269,7 @@ use_wandb: bool = False
 
 This is a research/educational project demonstrating modern generative modeling techniques. Potential improvements:
 
-- **Higher resolution**: Train on 256x256 or 512x512 images
+- **Higher resolution**: Train a superreslution model to scale up to 256x256 or 512x512 images
 - **Better architecture**: Experiment with DiT (Diffusion Transformer) or U-ViT designs
 - **Classifier-free guidance**: Add unconditional training for guidance during inference
 - **Better sampling**: Implement adaptive step size or higher-order ODE solvers
