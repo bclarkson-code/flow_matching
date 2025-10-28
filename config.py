@@ -41,6 +41,7 @@ class Config:
     dataset_name: str = "jackyhate/text-to-image-2M"
     dataset_path: str = "data/text-to-image-2M_64x64/"
     dataset_size: int | None = None
+    include_text_embedder: bool = False
     skip_first_n_samples: int = 0
     image_size: int = 64
     train_split: str = "train"
@@ -158,7 +159,7 @@ class FullScaleConfig(Config):
     gradient_accumulation_steps: int = 3
     world_size: int = 2
 
-    # epochs = 30_000 * 576 / 2_000_000 ~= 8.5
+    # epochs = 300_000 * 576 / 2_000_000 ~= 85
     num_steps: int = 300_000
 
     # got this from small scale hparam tuning

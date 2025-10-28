@@ -185,9 +185,12 @@ class DiffusionTransformer(torch.nn.Module):
         for parameter in self.image_embedder.vae.parameters():
             parameter.requires_grad = False
 
-        self.text_embedder = TextEmbedder(config)
-        for parameter in self.text_embedder.parameters():
-            parameter.requires_grad = False
+        if config.include_text_embedder:
+            self.text_embedder = TextEmbedder(config)
+            for parameter in self.text_embedder.parameters():
+                parameter.requires_grad = False
+        else:
+            self.text_embedder = None
 
         self.time_embedder = TimeEmbedder(config)
         self.blocks = torch.nn.ModuleList(
@@ -201,9 +204,16 @@ class DiffusionTransformer(torch.nn.Module):
         )
         torch.nn.init.zeros_(self.final_layer.bias)
 
-    def forward(self, image_latents: torch.Tensor, text: list[str], time: torch.Tensor):
+    def forward(self, image_latents: torch.Tensor, text: list[str] | tuple[torch.Tensor, torch.Tensor], time: torch.Tensor):
         image_embedding = self.image_embedder(image_latents)
-        text_embedding, text_mask = self.text_embedder(text)
+        if isinstance(text, list) and self.text_embedder is not None:
+            text_embedding, text_mask = self.text_embedder(text)
+        elif self.text_embedder is None:
+            raise ValueError(
+                "text embedding and mask must be passed if config.include_text_embedder is True"
+            )
+        else:
+            text_embedding, text_mask = text
         time_embedding = self.time_embedder(time)
 
         batch_size = image_embedding.shape[0]

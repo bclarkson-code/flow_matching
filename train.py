@@ -1,4 +1,5 @@
 import torch
+from dataset import HDF5ImageTextDataset
 from dataclasses import asdict
 from pprint import pprint
 import torch.distributed as dist
@@ -471,11 +472,17 @@ def create_train_dataset(
     epoch: int = 0,
     dataset_state_dict: dict | None = None,
 ):
-    train_dataset = (
-        load_from_disk(config.dataset_path)
-        .skip(config.eval_samples)
-        .shuffle(seed=config.seed + epoch)
-    )
+    if config.use_text_embedder:
+        train_dataset = (
+            load_from_disk(config.dataset_path)
+            .skip(config.eval_samples)
+            .shuffle(seed=config.seed + epoch)
+        )
+    else:
+        train_dataset = HDF5ImageTextDataset(
+            hdf5_path="data/text-to-image-2M_64x64_preprocessed.h5",
+            normalize_images=True,
+        )
     if config.dataset_size is not None:
         train_dataset = train_dataset.take(config.dataset_size).repeat(
             config.num_repeats
