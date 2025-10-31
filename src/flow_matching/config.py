@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import partial
+from typing import Literal
 
 
 @dataclass
@@ -10,6 +12,7 @@ class ModelConfig:
     image_embed_model_string: str = "stabilityai/sd-vae-ft-mse"
     embedding_dim: int = 768
     time_embedding_dim: int = 256
+    text_embedding_dim: int = 512
     n_image_tokens: int = 64
     n_text_tokens: int = 128
     n_blocks: int = 12
@@ -29,7 +32,7 @@ class Config:
 
     learning_rate: float = 5e-4
     weight_decay: float = 1e-2
-    batch_size: int = 160
+    batch_size: int = 128
     num_steps: int = 100_000
     num_repeats: int = 1_000_000
     warmup_ratio: float = 0.05
@@ -40,13 +43,15 @@ class Config:
 
     dataset_name: str = "jackyhate/text-to-image-2M"
     dataset_path: str = "data/text-to-image-2M_64x64/"
+    dataset_pattern: str = "/mnt/storage/datasets/flow_matching/text-to-image-2M_64x64_preprocessed-%06d.tar"
+    train_dataset_pattern: str = "/mnt/storage/datasets/flow_matching/text-to-image-2M_64x64_preprocessed-{000001..000230}.tar"
+    eval_dataset_pattern: str = "/mnt/storage/datasets/flow_matching/text-to-image-2M_64x64_preprocessed-000000.tar"
+    eval_samples: int | None = 32
     dataset_size: int | None = None
     include_text_embedder: bool = False
     skip_first_n_samples: int = 0
     image_size: int = 64
-    train_split: str = "train"
-    eval_samples: int = 32
-    num_workers: int = 8
+    num_workers: int = 0
 
     eval_every: int = 500
     num_inference_steps: int = 50
@@ -55,8 +60,9 @@ class Config:
 
     use_wandb: bool = True
     wandb_project: str = "diffusion-transformer"
-    wandb_watch_log: str = "all"
+    wandb_watch_log: Literal["gradients", "parameters", "all"] | None = "all"
     wandb_watch_log_freq: int = 100
+    num_images_to_upload: int = 32
 
     device: str = "cuda:0"
 
@@ -82,10 +88,9 @@ class OverfitConfig(Config):
     eval_every: int = 1000
     save_checkpoints: bool = False
     dataset_size: int | None = 4096
-    batch_size: int = 96
-    gradient_accumulation_steps: int = 3
+    batch_size: int = 128
+    gradient_accumulation_steps: int = 2
     num_steps: int = 5_000
-    num_repeats: int = 1_000_000
     learning_rate: float = 1e-3
 
 
@@ -99,9 +104,9 @@ class HParamTuningConfig(Config):
     eval_every: int = 1000
     save_checkpoints: bool = False
     dataset_size: int | None = None
-    batch_size: int = 96
+    batch_size: int = 128
     shuffle_buffer_size: int = 10_000
-    gradient_accumulation_steps: int = 3
+    gradient_accumulation_steps: int = 2
     num_steps: int = 5_000
     learning_rate: float = 5e-4
 
@@ -110,13 +115,15 @@ class HParamTuningConfig(Config):
 class DebugConfig(Config):
     """Config used for one off debugging"""
 
-    dataset_size: int | None = None
-    batch_size: int = 96
-    shuffle_buffer_size: int = 64
-    gradient_accumulation_steps: int = 3
-    eval_samples: int = 0
+    batch_size: int = 128
+    distributed: bool = False
+    gradient_accumulation_steps: int = 2
+    eval_samples: int | None = None
     save_checkpoints: bool = False
-    skip_first_n_samples: int = 2_000_000
+    num_workers: int = 0
+    world_size: int = 1
+    num_steps: int = 25
+    use_wandb: bool = False
 
 
 @dataclass
@@ -126,7 +133,7 @@ class StabilityConfig(Config):
     """
 
     eval_every: int = 1000
-    eval_samples: int = 1024
+    eval_samples: int | None = 1024
     save_checkpoints: bool = True
     keep_checkpoint_every_n_steps: int = 10_000
     dataset_size: int | None = None
@@ -150,7 +157,7 @@ class FullScaleConfig(Config):
     """
 
     eval_every: int = 1000
-    eval_samples: int = 1024
+    eval_samples: int | None = 1024
     save_checkpoints: bool = True
     keep_checkpoint_every_n_steps: int = 50_000
     dataset_size: int | None = None

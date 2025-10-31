@@ -1,9 +1,17 @@
-import torch
+import logging
 import math
+
+import torch
 from diffusers.models.autoencoders.autoencoder_kl import AutoencoderKL
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from transformers import T5EncoderModel, T5Tokenizer
 
-from config import Config
+from flow_matching.config import Config
+from flow_matching.distributed import is_main_process
+
+
+logger = logging.getLogger()
 
 
 class TextEmbedder(torch.nn.Module):
@@ -56,6 +64,7 @@ class ImageEmbedder(torch.nn.Module):
     def __init__(self, config: Config):
         super().__init__()
         self.vae = AutoencoderKL.from_pretrained(config.model.image_embed_model_string)
+        self.vae = torch.compile(self.vae)
         self.vae.eval()
         self.vae.enable_slicing()
         self.vae.enable_tiling()
@@ -64,11 +73,11 @@ class ImageEmbedder(torch.nn.Module):
 
     def to_latent(self, image: torch.Tensor):
         with torch.no_grad():
-            return self.vae.encode(image).latent_dist.mode() * self.scale_factor
+            return self.vae.encode(image).latent_dist.mode() * self.scale_factor  # pyright: ignore[reportAttributeAccessIssue]
 
-    def from_latent(self, latents: torch.Tensor) -> torch.Tensor:
+    def from_latent(self, latents: torch.FloatTensor) -> torch.Tensor:
         with torch.no_grad():
-            return self.vae.decode(latents / self.scale_factor).sample
+            return self.vae.decode(latents / self.scale_factor).sample  # type: ignore
 
     def forward(self, latents: torch.Tensor) -> torch.Tensor:
         embedding = self.patch_embedder(latents)
@@ -182,6 +191,7 @@ class DiffusionTransformer(torch.nn.Module):
         self.embedding_dim = config.model.embedding_dim
 
         self.image_embedder = ImageEmbedder(config)
+        self.image_embedder = torch.compile(self.image_embedder)
         for parameter in self.image_embedder.vae.parameters():
             parameter.requires_grad = False
 
@@ -196,6 +206,9 @@ class DiffusionTransformer(torch.nn.Module):
         self.blocks = torch.nn.ModuleList(
             [DiffusionTransformerBlock(config) for _ in range(config.model.n_blocks)]
         )
+        self.text_proj = torch.nn.Linear(
+            config.model.text_embedding_dim, self.embedding_dim
+        )
         self.final_layer = torch.nn.Linear(
             self.embedding_dim, config.model.latent_channels
         )
@@ -204,16 +217,26 @@ class DiffusionTransformer(torch.nn.Module):
         )
         torch.nn.init.zeros_(self.final_layer.bias)
 
-    def forward(self, image_latents: torch.Tensor, text: list[str] | tuple[torch.Tensor, torch.Tensor], time: torch.Tensor):
+    def forward(
+        self,
+        image_latents: torch.Tensor,
+        time: torch.Tensor,
+        text: list[str] | None = None,
+        text_embedding: torch.Tensor | None = None,
+        text_mask: torch.Tensor | None = None,
+    ):
         image_embedding = self.image_embedder(image_latents)
-        if isinstance(text, list) and self.text_embedder is not None:
-            text_embedding, text_mask = self.text_embedder(text)
-        elif self.text_embedder is None:
-            raise ValueError(
-                "text embedding and mask must be passed if config.include_text_embedder is True"
-            )
+
+        if text is not None and text_embedding is None and text_mask is None:
+            text_embedding, text_mask = self.text_embedder(text)  # pyright: ignore[reportOptionalCall]
+
+        elif text is None and text_embedding is not None and text_mask is not None:
+            pass
         else:
-            text_embedding, text_mask = text
+            raise ValueError(
+                "either text or text_embedding and text_mask must be provided"
+            )
+        text_embedding = self.text_proj(text_embedding)
         time_embedding = self.time_embedder(time)
 
         batch_size = image_embedding.shape[0]
@@ -223,7 +246,7 @@ class DiffusionTransformer(torch.nn.Module):
             device=image_embedding.device,
             dtype=torch.bool,
         )
-        mask = torch.cat([image_mask, text_mask.bool()], dim=1)
+        mask = torch.cat([image_mask, text_mask.bool()], dim=1)  # pyright: ignore[reportOptionalMemberAccess]
 
         for block in self.blocks:
             image_embedding, text_embedding = block(
@@ -239,3 +262,80 @@ class DiffusionTransformer(torch.nn.Module):
         velocity = velocity.permute(0, 3, 1, 2)
 
         return velocity
+
+    def summary(self) -> str:
+        from torchinfo import summary
+
+        dummy_image_latents = torch.randn(
+            self.config.batch_size,
+            self.config.model.latent_channels,
+            self.config.model.n_image_tokens // 8,
+            self.config.model.n_image_tokens // 8,
+        )
+        dummy_time = torch.randn(self.config.batch_size)
+        dummy_text_embedding = torch.randn(
+            self.config.batch_size,
+            self.config.model.n_text_tokens,
+            self.config.model.text_embedding_dim,
+        )
+        dummy_text_mask = torch.ones(
+            self.config.batch_size, self.config.model.n_text_tokens, dtype=torch.bool
+        )
+
+        return str(
+            summary(
+                self,
+                input_data={
+                    "image_latents": dummy_image_latents,
+                    "time": dummy_time,
+                    "text_embedding": dummy_text_embedding,
+                    "text_mask": dummy_text_mask,
+                },
+                depth=4,  # Control how deep to show nested modules
+                col_names=["input_size", "output_size", "num_params", "trainable"],
+                verbose=1,
+            )
+        )
+
+
+def create_model_and_optimizer(
+    config: Config, device: torch.device
+) -> tuple[DiffusionTransformer | DDP, torch.optim.AdamW, SequentialLR]:
+    model = DiffusionTransformer(config)
+
+    model = model.to(device)
+    model = torch.compile(model)
+
+    optimiser = torch.optim.AdamW(
+        model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
+    )
+
+    if config.distributed:
+        model = DDP(
+            model,
+            device_ids=[device.index],
+            output_device=device.index,
+        )
+
+    warmup_steps = int(config.warmup_ratio * config.num_steps)
+
+    warmup_scheduler = LinearLR(
+        optimiser,
+        start_factor=config.lr_decay_ratio,
+        end_factor=1.0,
+        total_iters=warmup_steps,
+    )
+
+    cosine_scheduler = CosineAnnealingLR(
+        optimiser,
+        T_max=config.num_steps - warmup_steps,
+        eta_min=config.learning_rate * config.lr_decay_ratio,
+    )
+
+    scheduler = SequentialLR(
+        optimiser,
+        schedulers=[warmup_scheduler, cosine_scheduler],
+        milestones=[warmup_steps],
+    )
+
+    return model, optimiser, scheduler

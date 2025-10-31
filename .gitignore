@@ -1,4 +1,6 @@
 __pycache__
+**.egg-info
+
 checkpoints
 data/text-to-image-2M_64x64
 wandb

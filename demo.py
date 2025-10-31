@@ -4,7 +4,7 @@ import os
 from PIL import Image
 import torchvision.transforms as transforms
 from train import find_latest_checkpoint
-from model import DiffusionTransformer
+from src.flow_matching.model import DiffusionTransformer
 from config import Config
 
 

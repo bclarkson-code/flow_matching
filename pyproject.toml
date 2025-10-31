@@ -1,0 +1,45 @@
+[project]
+name = "flow-matching"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13.1"
+dependencies = [
+    "accelerate>=1.11.0",
+    "diffusers>=0.35.2",
+    "isort>=7.0.0",
+    "numpy>=2.3.4",
+    "torch>=2.9.0",
+    "tqdm>=4.67.1",
+    "transformers>=4.57.1",
+    "wandb>=0.22.3",
+    "webdataset>=1.0.2",
+]
+
+[tool.pyright]
+reportMissingTypeStubs = false
+
+[tool.ruff]
+select = ["I"] # Enable isort rules
+
+[tool.ruff.isort]
+# Common isort-style configurations
+known-first-party = ["your_package_name"]
+known-third-party = ["numpy", "pandas"]
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+lines-after-imports = 2
+force-single-line = false
+force-sort-within-sections = false
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
