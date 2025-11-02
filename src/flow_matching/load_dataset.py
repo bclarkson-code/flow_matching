@@ -1,13 +1,13 @@
-from datasets import load_from_disk
-import torch
-from webdataset import ShardWriter  # type: ignore
-import io
-import torchvision
-from PIL import Image
 import numpy as np
+import torch
+import torchvision
+from datasets import load_from_disk
+from PIL import Image
 from tqdm import tqdm
-from flow_matching.model import ImageEmbedder, TextEmbedder
+from webdataset import ShardWriter  # type: ignore
+
 from flow_matching.config import Config, FullScaleConfig
+from flow_matching.model import ImageEmbedder, TextEmbedder
 
 
 def preprocess_and_resize(row: dict, target_size: int = 64) -> dict:
@@ -47,7 +47,7 @@ def create_webdataset(
 
     for idx in tqdm(range(len(dataset))):
         sample = dataset[idx]
-        image: Image.Image | torch.Tensor = sample["jpg"]  # pyright: ignore[reportAssignmentType]
+        image: Image.Image = sample["jpg"]  # pyright: ignore[reportAssignmentType]
 
         if image.mode != "RGB":
             image = image.convert("RGB")
@@ -57,14 +57,14 @@ def create_webdataset(
             text_embeds = text_embeds[0].cpu().numpy().astype(np.float16)
             attention_mask = attention_mask[0].cpu().numpy()
 
-            image = to_tensor(image)
-            image = image.float().to(device)
-            image = (image * 128) - 1
-            image = image.unsqueeze(0)
-            latents = image_embedder.to_latent(image)
+            image_tensor = to_tensor(image)
+            image_tensor = image_tensor.float().to(device)
+            image_tensor = image_tensor / 256  # [0,255] -> [0,1]
+            image_tensor = (image_tensor * 2) - 1  # [0,1] -> [-1, 1]
+            image_tensor = image_tensor.unsqueeze(0)
+            latents = image_embedder.to_latent(image_tensor)
             latents = latents.cpu().numpy().astype(np.float16)
 
-        # Write to shard
         sink.write(
             {
                 "__key__": f"{idx:08d}",
@@ -77,7 +77,6 @@ def create_webdataset(
     sink.close()
 
 
-# Run this once
 if __name__ == "__main__":
     config = FullScaleConfig()
     create_webdataset(

@@ -79,8 +79,11 @@ def compute_loss(
     with torch.profiler.record_function("preprocess_inputs"):
         noise = torch.randn_like(image_latents).to(device)
         time = torch.rand(batch_size).to(device)
+        time = time.view(-1, 1, 1, 1)
+
         target_velocity = image_latents - noise
-        noisy_latents = noise + time.view(-1, 1, 1, 1) * (image_latents - noise)
+        noisy_latents = (1 - time) * noise + (time * image_latents)
+        time = time.squeeze()
 
     with torch.profiler.record_function("forward"):
         predicted_velocity = model(
@@ -90,6 +93,10 @@ def compute_loss(
             text_mask=attention_mask,
             time=time,
         )
+    recovered_latents = (
+        noisy_latents + (1 - time.view(-1, 1, 1, 1)) * predicted_velocity
+    )
+
     with torch.profiler.record_function("loss"):
         loss = torch.nn.functional.mse_loss(predicted_velocity, target_velocity)
     return loss, {
@@ -232,7 +239,7 @@ def train_step(
 ) -> tuple[DiffusionTransformer | DDP, torch.Tensor]:
     optimiser.zero_grad()
 
-    total_loss = torch.tensor(-1.0, device=device)
+    total_loss = torch.tensor(0.0, device=device)
     tensors = {}
 
     for _ in range(config.gradient_accumulation_steps):

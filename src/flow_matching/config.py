@@ -39,7 +39,7 @@ class Config:
     lr_decay_ratio: float = 0.1
     shuffle_buffer_size = 100
     gradient_clip_max_norm: float = 5.0
-    gradient_accumulation_steps: int = 4
+    gradient_accumulation_steps: int = 2
 
     dataset_name: str = "jackyhate/text-to-image-2M"
     dataset_path: str = "data/text-to-image-2M_64x64/"
@@ -90,25 +90,32 @@ class OverfitConfig(Config):
     dataset_size: int | None = 4096
     batch_size: int = 128
     gradient_accumulation_steps: int = 2
-    num_steps: int = 5_000
-    learning_rate: float = 1e-3
+    num_steps: int = 1_000
+    learning_rate: float = 1e-4
 
 
 @dataclass
 class HParamTuningConfig(Config):
     """
-    Run a relatively small scale run (10k steps) to dial in hyperparameters like
+    Run a relatively small scale run (5k steps) to dial in hyperparameters like
     learning rate
     """
 
-    eval_every: int = 1000
+    log_every: int = 1000
+    eval_samples: int | None = 1024
+    shuffle_buffer_size: int = 100_000
     save_checkpoints: bool = False
     dataset_size: int | None = None
+
+    # effective batch size = 128 * 2 * 2 = 512
     batch_size: int = 128
-    shuffle_buffer_size: int = 10_000
     gradient_accumulation_steps: int = 2
+    world_size: int = 2
+
     num_steps: int = 5_000
-    learning_rate: float = 5e-4
+
+    learning_rate: float = 1e-3
+    gradient_clip_max_norm: float = 1.0
 
 
 @dataclass
@@ -118,12 +125,14 @@ class DebugConfig(Config):
     batch_size: int = 128
     distributed: bool = False
     gradient_accumulation_steps: int = 2
-    eval_samples: int | None = None
+    eval_samples: int | None = 128
+    eval_every: int = 100
+    dataset_size: int | None = 100_000
     save_checkpoints: bool = False
     num_workers: int = 0
     world_size: int = 1
-    num_steps: int = 25
-    use_wandb: bool = False
+    num_steps: int = 500
+    use_wandb: bool = True
 
 
 @dataclass
@@ -134,12 +143,14 @@ class StabilityConfig(Config):
 
     eval_every: int = 1000
     eval_samples: int | None = 1024
+    num_images_to_upload: int = 100
     save_checkpoints: bool = True
     keep_checkpoint_every_n_steps: int = 10_000
     dataset_size: int | None = None
-    # effective batch size = 96 * 3 * 2 = 576
-    batch_size: int = 96
-    gradient_accumulation_steps: int = 3
+
+    # effective batch size = 128 * 2 * 2 = 512
+    batch_size: int = 128
+    gradient_accumulation_steps: int = 2
     world_size: int = 2
 
     # epochs = 30_000 * 576 / 2_000_000 ~= 8.5

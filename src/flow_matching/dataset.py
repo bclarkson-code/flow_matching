@@ -20,25 +20,20 @@ def create_train_dataset(
 ) -> WebDataset:
     train_dataset = WebDataset(
         config.train_dataset_pattern,
-        shardshuffle=1000,
-        nodesplitter=wds.split_by_node if config.distributed else None,
+        shardshuffle=config.shuffle_buffer_size,
+        nodesplitter=wds.split_by_node if config.distributed else None,  # pyright: ignore[reportAttributeAccessIssue]
     )
 
     train_dataset = train_dataset.shuffle(
         config.shuffle_buffer_size, rng=random.Random(config.seed)
     )
 
-    train_dataset = (
-        train_dataset.decode("pilrgb")
-        .map(
-            lambda row: {
-                "latents": torch.from_numpy(row["latents.pyd"]).float().squeeze(),
-                "text_embeds": torch.from_numpy(row["embeds.pyd"]).float().squeeze(),
-                "attention_mask": torch.from_numpy(row["mask.pyd"]).squeeze(),
-            }
-        )
-        .repeat()
-        .batched(config.batch_size)
+    train_dataset = train_dataset.decode("pilrgb").map(
+        lambda row: {
+            "latents": torch.from_numpy(row["latents.pyd"]).float().squeeze(),
+            "text_embeds": torch.from_numpy(row["embeds.pyd"]).float().squeeze(),
+            "attention_mask": torch.from_numpy(row["mask.pyd"]).squeeze(),
+        }
     )
 
     if config.dataset_size is not None:
@@ -46,6 +41,9 @@ def create_train_dataset(
 
     if resume_from_step is not None:
         train_dataset = train_dataset.slice(resume_from_step)
+
+    train_dataset = train_dataset.batched(config.batch_size)
+    train_dataset = train_dataset.repeat()
 
     if is_main_process():
         logger.info(f"Loaded WebDataset from {config.train_dataset_pattern}")
@@ -58,24 +56,21 @@ def create_eval_dataset(
     eval_dataset = WebDataset(
         config.eval_dataset_pattern,
         shardshuffle=False,
-        nodesplitter=wds.split_by_node if config.distributed else None,
+        nodesplitter=wds.split_by_node if config.distributed else None,  # pyright: ignore[reportAttributeAccessIssue]
     )
 
-    eval_dataset = (
-        eval_dataset.decode("pilrgb")
-        .map(
-            lambda row: {
-                "latents": torch.from_numpy(row["latents.pyd"]).float().squeeze(),
-                "text_embeds": torch.from_numpy(row["embeds.pyd"]).float().squeeze(),
-                "attention_mask": torch.from_numpy(row["mask.pyd"]).squeeze(),
-            }
-        )
-        .batched(config.batch_size)
+    eval_dataset = eval_dataset.decode("pilrgb").map(
+        lambda row: {
+            "latents": torch.from_numpy(row["latents.pyd"]).float().squeeze(),
+            "text_embeds": torch.from_numpy(row["embeds.pyd"]).float().squeeze(),
+            "attention_mask": torch.from_numpy(row["mask.pyd"]).squeeze(),
+        }
     )
 
     if config.eval_samples is not None:
-        n_batches = math.ceil(config.eval_samples / config.batch_size)
-        eval_dataset = eval_dataset.slice(0, n_batches, 1)
+        eval_dataset = eval_dataset.slice(config.eval_samples)
+
+    eval_dataset = eval_dataset.batched(config.batch_size)
 
     if is_main_process():
         logger.info(f"Loaded WebDataset from {config.eval_dataset_pattern}")

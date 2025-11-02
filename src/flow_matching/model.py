@@ -66,14 +66,12 @@ class ImageEmbedder(torch.nn.Module):
         self.vae = AutoencoderKL.from_pretrained(config.model.image_embed_model_string)
         self.vae = torch.compile(self.vae)
         self.vae.eval()
-        self.vae.enable_slicing()
-        self.vae.enable_tiling()
         self.patch_embedder = PatchEmbedder(config)
         self.scale_factor = config.model.vae_scale_factor
 
     def to_latent(self, image: torch.Tensor):
         with torch.no_grad():
-            return self.vae.encode(image).latent_dist.mode() * self.scale_factor  # pyright: ignore[reportAttributeAccessIssue]
+            return self.vae.encode(image).latent_dist.mode() * self.scale_factor  # pyright: ignore[reportFunctionMemberAccess, reportAttributeAccessIssue]
 
     def from_latent(self, latents: torch.FloatTensor) -> torch.Tensor:
         with torch.no_grad():
