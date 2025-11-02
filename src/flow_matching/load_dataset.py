@@ -83,7 +83,6 @@ def create_webdataset(
 
 
 def create_webdataset_batched(
-    dataset_path: str,
     output_pattern: str,
     config: Config,
     samples_per_shard: int = 10000,
@@ -168,8 +167,7 @@ if __name__ == "__main__":
     config = FullScaleConfig()
     start = time.time()
     create_webdataset_batched(
-        dataset_path=config.dataset_path,
-        output_pattern="/tmp/dataset_batched%06d.tar",
+        output_pattern="data/dataset_batched%06d.tar",
         config=config,
     )
     duration = time.time() - start
