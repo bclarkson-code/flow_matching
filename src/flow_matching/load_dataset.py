@@ -1,7 +1,9 @@
+import time
+
 import numpy as np
 import torch
 import torchvision
-from datasets import load_from_disk
+from datasets import load_dataset, load_from_disk
 from PIL import Image
 from tqdm import tqdm
 from webdataset import ShardWriter  # type: ignore
@@ -34,7 +36,8 @@ def create_webdataset(
         output_pattern: e.g., "data/shard-%06d.tar" creates data/shard-000000.tar, etc.
         samples_per_shard: Number of samples per TAR file (10k is typical)
     """
-    dataset = load_from_disk(dataset_path)
+    dataset = load_from_disk(dataset_path=dataset_path)
+    dataset = dataset[:10_000]
     print("Loading text encoder...")
     text_embedder = TextEmbedder(config)
     image_embedder = ImageEmbedder(config)
@@ -45,15 +48,17 @@ def create_webdataset(
     sink = ShardWriter(output_pattern, maxcount=samples_per_shard)
     to_tensor = torchvision.transforms.PILToTensor()
 
-    for idx in tqdm(range(len(dataset))):
-        sample = dataset[idx]
-        image: Image.Image = sample["jpg"]  # pyright: ignore[reportAssignmentType]
+    for idx in tqdm(range(10_000)):
+        image: Image.Image = dataset["jpg"][idx]  # pyright: ignore[reportAssignmentType]
 
         if image.mode != "RGB":
             image = image.convert("RGB")
+        image = image.resize((config.image_size, config.image_size), Image.LANCZOS)  # pyright: ignore[reportAttributeAccessIssue]
 
         with torch.no_grad():
-            text_embeds, attention_mask = text_embedder([sample["json"]["prompt"]])  # type: ignore
+            text_embeds, attention_mask = text_embedder(
+                [dataset["json"][idx]["prompt"]]
+            )  # type: ignore
             text_embeds = text_embeds[0].cpu().numpy().astype(np.float16)
             attention_mask = attention_mask[0].cpu().numpy()
 
@@ -77,10 +82,95 @@ def create_webdataset(
     sink.close()
 
 
+def create_webdataset_batched(
+    dataset_path: str,
+    output_pattern: str,
+    config: Config,
+    samples_per_shard: int = 10000,
+    batch_size: int = 32,
+):
+    """
+    Save to WebDataset format (TAR archives)
+
+    Args:
+        output_pattern: e.g., "data/shard-%06d.tar" creates data/shard-000000.tar, etc.
+        samples_per_shard: Number of samples per TAR file (10k is typical)
+        batch_size: Number of samples to process in parallel (default: 32)
+    """
+    dataset = load_dataset(config.dataset_name, streaming=True, split="train")
+    # dataset = load_from_disk(dataset_path=dataset_path)
+    # dataset = dataset[:10_000]
+    dataset = iter(dataset)
+    print("Loading encoders...")
+    text_embedder = TextEmbedder(config)
+    image_embedder = ImageEmbedder(config)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    text_embedder = text_embedder.eval().to(device)
+    image_embedder = image_embedder.eval().to(device)
+
+    sink = ShardWriter(output_pattern, maxcount=samples_per_shard)
+    to_tensor = torchvision.transforms.PILToTensor()
+    index = 0
+    running = True
+    pbar = tqdm(total=10_000)
+
+    while running and index < 10_000:
+        batch_samples = []
+        for _ in range(batch_size):
+            try:
+                batch_samples.append(next(dataset))
+            except StopIteration:
+                running = False
+
+        prompts = []
+        image_tensors = []
+
+        for sample in batch_samples:
+            image: Image.Image = sample["jpg"]  # pyright: ignore[reportAssignmentType]
+
+            if image.mode != "RGB":
+                image = image.convert("RGB")
+            image = image.resize((config.image_size, config.image_size), Image.LANCZOS)  # type: ignore
+            prompts.append(sample["json"]["prompt"])  # type: ignore
+
+            image_tensor = to_tensor(image).float() / 256  # [0,255] -> [0,1]
+            image_tensor = (image_tensor * 2) - 1  # [0,1] -> [-1, 1]
+            image_tensors.append(image_tensor)
+
+        with torch.no_grad():
+            text_embeds, attention_masks = text_embedder(prompts)  # type: ignore
+
+            image_batch = torch.stack(image_tensors).to(device)
+            latents_batch = image_embedder.to_latent(image_batch)
+
+            text_embeds = text_embeds.cpu().numpy().astype(np.float16)
+            attention_masks = attention_masks.cpu().numpy()
+            latents_batch = latents_batch.cpu().numpy().astype(np.float16)
+
+            for text_embed, attention_mask, latents in zip(
+                text_embeds, attention_masks, latents_batch
+            ):
+                sink.write(
+                    {
+                        "__key__": f"{index:08d}",
+                        "latents.pyd": latents,
+                        "embeds.pyd": text_embed,
+                        "mask.pyd": attention_mask,
+                    }
+                )
+                pbar.update()
+                index += 1
+    pbar.close()
+    sink.close()
+
+
 if __name__ == "__main__":
     config = FullScaleConfig()
-    create_webdataset(
+    start = time.time()
+    create_webdataset_batched(
         dataset_path=config.dataset_path,
-        output_pattern=config.dataset_pattern,
+        output_pattern="/tmp/dataset_batched%06d.tar",
         config=config,
     )
+    duration = time.time() - start
+    print(f"Took: {duration:.5f}s")

@@ -44,6 +44,7 @@ class Config:
     dataset_name: str = "jackyhate/text-to-image-2M"
     dataset_path: str = "data/text-to-image-2M_64x64/"
     dataset_pattern: str = "/mnt/storage/datasets/flow_matching/text-to-image-2M_64x64_preprocessed-%06d.tar"
+    num_datapoints = 2_300_793
     train_dataset_pattern: str = "/mnt/storage/datasets/flow_matching/text-to-image-2M_64x64_preprocessed-{000001..000230}.tar"
     eval_dataset_pattern: str = "/mnt/storage/datasets/flow_matching/text-to-image-2M_64x64_preprocessed-000000.tar"
     eval_samples: int | None = 32
