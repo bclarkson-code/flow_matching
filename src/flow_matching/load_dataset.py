@@ -1,3 +1,5 @@
+import multiprocessing
+import os
 import time
 
 import numpy as np
@@ -6,6 +8,7 @@ import torchvision
 from datasets import load_dataset, load_from_disk
 from PIL import Image
 from tqdm import tqdm
+from tqdm.contrib.concurrent import process_map
 from webdataset import ShardWriter  # type: ignore
 
 from flow_matching.config import Config, FullScaleConfig
@@ -37,7 +40,6 @@ def create_webdataset(
         samples_per_shard: Number of samples per TAR file (10k is typical)
     """
     dataset = load_from_disk(dataset_path=dataset_path)
-    dataset = dataset[:10_000]
     print("Loading text encoder...")
     text_embedder = TextEmbedder(config)
     image_embedder = ImageEmbedder(config)
@@ -82,6 +84,25 @@ def create_webdataset(
     sink.close()
 
 
+def process_sample(sample):
+    print("start")
+    image: Image.Image = sample["jpg"]  # pyright: ignore[reportAssignmentType]
+
+    print("loaded image")
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+    image = image.resize((config.image_size, config.image_size), Image.LANCZOS)  # type: ignore
+    print("resized image")
+    prompt = sample["json"]["prompt"]  # type: ignore
+
+    image_tensor = (
+        torchvision.transforms.PILToTensor()(image).float() / 256
+    )  # [0,255] -> [0,1]
+    print("to_tensor")
+    image_tensor = (image_tensor * 2) - 1  # [0,1] -> [-1, 1]
+    return image_tensor, prompt
+
+
 def create_webdataset_batched(
     output_pattern: str,
     config: Config,
@@ -96,9 +117,7 @@ def create_webdataset_batched(
         samples_per_shard: Number of samples per TAR file (10k is typical)
         batch_size: Number of samples to process in parallel (default: 32)
     """
-    dataset = load_dataset(config.dataset_name, streaming=True, split="train")
-    # dataset = load_from_disk(dataset_path=dataset_path)
-    # dataset = dataset[:10_000]
+    dataset = load_dataset(config.dataset_name, split="train")
     dataset = iter(dataset)
     print("Loading encoders...")
     text_embedder = TextEmbedder(config)
@@ -108,12 +127,11 @@ def create_webdataset_batched(
     image_embedder = image_embedder.eval().to(device)
 
     sink = ShardWriter(output_pattern, maxcount=samples_per_shard)
-    to_tensor = torchvision.transforms.PILToTensor()
     index = 0
     running = True
-    pbar = tqdm(total=10_000)
+    pbar = tqdm(total=config.num_datapoints)
 
-    while running and index < 10_000:
+    while running:
         batch_samples = []
         for _ in range(batch_size):
             try:
@@ -124,16 +142,11 @@ def create_webdataset_batched(
         prompts = []
         image_tensors = []
 
-        for sample in batch_samples:
-            image: Image.Image = sample["jpg"]  # pyright: ignore[reportAssignmentType]
+        with multiprocessing.Pool(4) as pool:
+            processed = pool.map(process_sample, batch_samples)
 
-            if image.mode != "RGB":
-                image = image.convert("RGB")
-            image = image.resize((config.image_size, config.image_size), Image.LANCZOS)  # type: ignore
-            prompts.append(sample["json"]["prompt"])  # type: ignore
-
-            image_tensor = to_tensor(image).float() / 256  # [0,255] -> [0,1]
-            image_tensor = (image_tensor * 2) - 1  # [0,1] -> [-1, 1]
+        for image_tensor, prompt in processed:
+            prompts.append(prompt)  # type: ignore
             image_tensors.append(image_tensor)
 
         with torch.no_grad():
@@ -167,7 +180,7 @@ if __name__ == "__main__":
     config = FullScaleConfig()
     start = time.time()
     create_webdataset_batched(
-        output_pattern="data/dataset_batched%06d.tar",
+        output_pattern=config.dataset_pattern,
         config=config,
     )
     duration = time.time() - start

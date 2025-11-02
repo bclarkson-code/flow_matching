@@ -39,20 +39,23 @@ class Config:
     lr_decay_ratio: float = 0.1
     shuffle_buffer_size = 100
     gradient_clip_max_norm: float = 5.0
-    gradient_accumulation_steps: int = 2
+    gradient_accumulation_steps: int = 1
 
     dataset_name: str = "jackyhate/text-to-image-2M"
     dataset_path: str = "data/text-to-image-2M_64x64/"
-    dataset_pattern: str = "/mnt/storage/datasets/flow_matching/text-to-image-2M_64x64_preprocessed-%06d.tar"
+    dataset_pattern: str = "data/text-to-image-2M_64x64_preprocessed-%06d.tar"
     num_datapoints = 2_300_793
-    train_dataset_pattern: str = "/mnt/storage/datasets/flow_matching/text-to-image-2M_64x64_preprocessed-{000001..000230}.tar"
-    eval_dataset_pattern: str = "/mnt/storage/datasets/flow_matching/text-to-image-2M_64x64_preprocessed-000000.tar"
+    train_dataset_pattern: str = (
+        "data/text-to-image-2M_64x64_preprocessed-{000001..000230}.tar"
+    )
+    eval_dataset_pattern: str = "data/text-to-image-2M_64x64_preprocessed-000000.tar"
     eval_samples: int | None = 32
     dataset_size: int | None = None
     include_text_embedder: bool = False
     skip_first_n_samples: int = 0
     image_size: int = 64
-    num_workers: int = 0
+    num_workers: int = 8
+    prefetch_batches: int = 4
 
     eval_every: int = 500
     num_inference_steps: int = 50
@@ -109,14 +112,18 @@ class HParamTuningConfig(Config):
     dataset_size: int | None = None
 
     # effective batch size = 128 * 2 * 2 = 512
-    batch_size: int = 128
-    gradient_accumulation_steps: int = 2
-    world_size: int = 2
+    batch_size: int = 512
+    gradient_accumulation_steps: int = 1
+    distributed: bool = False
+    world_size: int = 1
+    train_dataset_pattern: str = (
+        "data/text-to-image-2M_64x64_preprocessed-{000001..000050}.tar"
+    )
 
     num_steps: int = 5_000
 
     learning_rate: float = 1e-3
-    gradient_clip_max_norm: float = 1.0
+    gradient_clip_max_norm: float = 5.0
 
 
 @dataclass
@@ -174,9 +181,10 @@ class FullScaleConfig(Config):
     keep_checkpoint_every_n_steps: int = 50_000
     dataset_size: int | None = None
     # effective batch size = 96 * 3 * 2 = 576
-    batch_size: int = 96
-    gradient_accumulation_steps: int = 3
-    world_size: int = 2
+    batch_size: int = 512
+    gradient_accumulation_steps: int = 1
+    distributed: bool = False
+    world_size: int = 1
 
     # epochs = 300_000 * 576 / 2_000_000 ~= 85
     num_steps: int = 300_000

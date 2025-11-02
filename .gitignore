@@ -14,3 +14,6 @@ notebook.ipynb
 vae_reconstruction_test.png
 debug.py
 data/text-to-image-2M_64x64_preprocessed.h5
+data/*
+profile.json
+pytorch_trace.json

@@ -1,5 +1,7 @@
+import argparse
 import math
 import os
+import time
 from dataclasses import dataclass, replace
 
 import torch
@@ -13,6 +15,16 @@ from train import train_worker
 GIGABYTE = 1024**3
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Benchmark and debug transformer")
+    parser.add_argument(
+        "--method",
+        type=str,
+        default="default",
+    )
+    return parser.parse_args()
+
+
 @dataclass
 class Args:
     resume: bool = False
@@ -23,13 +35,10 @@ def profile(
 ) -> None:
     config = replace(
         config,
-        distributed=True,
         use_wandb=False,
         eval_samples=None,
-        gradient_accumulation_steps=2,
-        batch_size=128,
-        num_inference_steps=50,
-        num_steps=5,
+        num_steps=25,
+        train_dataset_pattern="data/text-to-image-2M_64x64_preprocessed-{000001..00037}.tar",
     )
     args = Args()
     with torch.profiler.profile(
@@ -59,6 +68,7 @@ def try_batch_size(
         batch_size=batch_size,
         num_inference_steps=50,
         num_steps=5,
+        train_dataset_pattern="data/text-to-image-2M_64x64_preprocessed-{000001..00037}.tar",
     )
     args = Args()
     try:
@@ -108,7 +118,7 @@ def benchmark(config: Config) -> float:
     images_per_step = (
         config.batch_size * config.gradient_accumulation_steps * config.world_size
     )
-    num_steps = math.ceil(2**16 / images_per_step)
+    num_steps = math.ceil(2**11 / images_per_step)
     print(f"Processing {images_per_step} images per step")
     print(f"Running for {num_steps} steps")
 
@@ -116,34 +126,39 @@ def benchmark(config: Config) -> float:
         config,
         use_wandb=False,
         num_steps=num_steps,
-        eval_every=num_steps,
-        eval_samples=1024,
+        # eval_every=num_steps,
+        # eval_samples=1024,
+        train_dataset_pattern="data/text-to-image-2M_64x64_preprocessed-{000001..00037}.tar",
     )
 
     args = Args()
 
+    start = time.time()
     if config.distributed:
         world_size = config.world_size
-        durations = mp.spawn(
+        mp.spawn(
             train_worker,
             args=(world_size, config, args),
             nprocs=world_size,
             join=True,
         )
-        print(durations)
-        duration = max(durations)
     else:
-        duration = train_worker(0, 1, config, args)
+        train_worker(0, 1, config, args)
+    duration = time.time() - start
 
     print(f"Speedrun took: {duration:.3f} seconds")
     return duration
 
 
 if __name__ == "__main__":
+    args = parse_args()
     config = ConfigType.FULL_SCALE.to_config()
-    profile(config)
-    # batch_size = find_batch_size(config)
-    # batch_size = 128
-    # print(f"Found batch size: {batch_size}")
-    # config = replace(config, batch_size=batch_size)
-    # duration = benchmark(config)
+    match args.method:
+        case "default":
+            duration = benchmark(config)
+            print(f"Duration: {duration:.4f}f")
+        case "find_batch_size":
+            batch_size = find_batch_size(config)
+            print(f"Found batch size: {batch_size}")
+        case "profile":
+            profile(config)

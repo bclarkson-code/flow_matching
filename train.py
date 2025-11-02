@@ -183,47 +183,78 @@ def log_training_metrics(
     loss: float,
     grad_norm: torch.Tensor,
     optimiser: torch.optim.AdamW,
-    image_latents: torch.Tensor,
-    noise: torch.Tensor,
-    time: torch.Tensor,
-    noisy_latents: torch.Tensor,
-    predicted_velocity: torch.Tensor,
-    target_velocity: torch.Tensor,
     step: int,
     config: Config,
+    image_latents: torch.Tensor | None = None,
+    noise: torch.Tensor | None = None,
+    time: torch.Tensor | None = None,
+    noisy_latents: torch.Tensor | None = None,
+    predicted_velocity: torch.Tensor | None = None,
+    target_velocity: torch.Tensor | None = None,
 ) -> None:
     if not is_main_process() or not config.use_wandb:
         return
-
+    metrics = {
+        "train/loss": loss,
+        "train/grad_norm": grad_norm.item(),
+        "train/learning_rate": optimiser.param_groups[0]["lr"],
+    }
+    if image_latents is not None:
+        metrics.update(
+            {
+                "train/latents_min": image_latents.min().item(),
+                "train/latents_mean": image_latents.mean().item(),
+                "train/latents_max": image_latents.max().item(),
+                "train/latents_std": image_latents.std().item(),
+            }
+        )
+    if noise is not None:
+        metrics.update(
+            {
+                "train/noise_min": noise.min().item(),
+                "train/noise_mean": noise.mean().item(),
+                "train/noise_max": noise.max().item(),
+                "train/noise_std": noise.std().item(),
+            }
+        )
+    if time is not None:
+        metrics.update(
+            {
+                "train/time_min": time.min().item(),
+                "train/time_mean": time.mean().item(),
+                "train/time_max": time.max().item(),
+                "train/time_std": time.std().item(),
+            }
+        )
+    if noisy_latents is not None:
+        metrics.update(
+            {
+                "train/noisy_latents_min": noisy_latents.min().item(),
+                "train/noisy_latents_mean": noisy_latents.mean().item(),
+                "train/noisy_latents_max": noisy_latents.max().item(),
+                "train/noisy_latents_std": noisy_latents.std().item(),
+            }
+        )
+    if predicted_velocity is not None:
+        metrics.update(
+            {
+                "train/predicted_velocity_min": predicted_velocity.min().item(),
+                "train/predicted_velocity_mean": predicted_velocity.mean().item(),
+                "train/predicted_velocity_max": predicted_velocity.max().item(),
+                "train/predicted_velocity_std": predicted_velocity.std().item(),
+            }
+        )
+    if target_velocity is not None:
+        metrics.update(
+            {
+                "train/target_velocity_min": target_velocity.min().item(),
+                "train/target_velocity_mean": target_velocity.mean().item(),
+                "train/target_velocity_max": target_velocity.max().item(),
+                "train/target_velocity_std": target_velocity.std().item(),
+            }
+        )
     wandb.log(
-        {
-            "train/loss": loss,
-            "train/grad_norm": grad_norm.item(),
-            "train/learning_rate": optimiser.param_groups[0]["lr"],
-            "train/latents_min": image_latents.min().item(),
-            "train/latents_mean": image_latents.mean().item(),
-            "train/latents_max": image_latents.max().item(),
-            "train/latents_std": image_latents.std().item(),
-            "train/noise_min": noise.min().item(),
-            "train/noise_mean": noise.mean().item(),
-            "train/noise_max": noise.max().item(),
-            "train/noise_std": noise.std().item(),
-            "train/time_min": time.min().item(),
-            "train/time_max": time.max().item(),
-            "train/time_std": time.std().item(),
-            "train/noisy_latents_min": noisy_latents.min().item(),
-            "train/noisy_latents_mean": noisy_latents.mean().item(),
-            "train/noisy_latents_max": noisy_latents.max().item(),
-            "train/noisy_latents_std": noisy_latents.std().item(),
-            "train/predicted_velocity_min": predicted_velocity.min().item(),
-            "train/predicted_velocity_mean": predicted_velocity.mean().item(),
-            "train/predicted_velocity_max": predicted_velocity.max().item(),
-            "train/predicted_velocity_std": predicted_velocity.std().item(),
-            "train/target_velocity_min": target_velocity.min().item(),
-            "train/target_velocity_mean": target_velocity.mean().item(),
-            "train/target_velocity_max": target_velocity.max().item(),
-            "train/target_velocity_std": target_velocity.std().item(),
-        },
+        metrics,
         step=step,
     )
 
@@ -240,17 +271,15 @@ def train_step(
     optimiser.zero_grad()
 
     total_loss = torch.tensor(0.0, device=device)
-    tensors = {}
+    with torch.profiler.record_function("load_data"):
+        batch = next(dataset)
 
     for _ in range(config.gradient_accumulation_steps):
-        with torch.profiler.record_function("load_data"):
-            batch = next(dataset)
-
         with torch.profiler.record_function("preprocess_data"):
             latents, text_embedding, attention_mask = (
-                batch["latents"],
-                batch["text_embeds"],
-                batch["attention_mask"],
+                batch["latents"].squeeze(),
+                batch["text_embeds"].squeeze(),
+                batch["attention_mask"].squeeze(),
             )
             latents = latents.to(device)
             text_embedding = text_embedding.to(device)
@@ -263,6 +292,8 @@ def train_step(
             attention_mask=attention_mask,
             device=device,
         )
+        with torch.profiler.record_function("load_data"):
+            batch = next(dataset)
 
         loss = loss / config.gradient_accumulation_steps
 
@@ -281,8 +312,8 @@ def train_step(
         scheduler.step()
 
     # only log tensors from the final batch so we only need to keep a single batch in memory
-    with torch.profiler.record_function("transfer_tensors"):
-        tensors = {k: v.detach().cpu() for k, v in tensors.items()}
+    # with torch.profiler.record_function("transfer_tensors"):
+    #     tensors = {k: v.detach().cpu() for k, v in tensors.items()}
 
     with torch.profiler.record_function("log"):
         log_training_metrics(
@@ -291,7 +322,6 @@ def train_step(
             optimiser=optimiser,
             step=step,
             config=config,
-            **tensors,
         )
 
     return model, total_loss
@@ -357,13 +387,13 @@ def training_loop(
         position=0,
         disable=not is_main_process(),
     )
-    dataset_iter = iter(dataset)
+    dataset = iter(dataset)
 
     with pbar_context as pbar:
         while step < config.num_steps:
             model, loss = train_step(
                 model,
-                dataset_iter,
+                dataset,
                 optimiser,
                 scheduler,
                 device,
@@ -469,9 +499,9 @@ def main():
     logger.info(f"Using config: {asdict(config)}")
 
     if config.distributed:
-        rank = int(os.environ["RANK"])
-        world_size = int(os.environ["WORLD_SIZE"])
-        local_rank = int(os.environ["LOCAL_RANK"])
+        rank = int(os.environ["RANK"], 0)
+        world_size = int(os.environ["WORLD_SIZE"], 1)
+        local_rank = int(os.environ["LOCAL_RANK"], 1)
 
         logger.info(f"Rank {rank}/{world_size}, Local rank: {local_rank}")
         train_worker(local_rank, world_size, config, args)

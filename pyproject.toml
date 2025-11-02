@@ -10,6 +10,7 @@ dependencies = [
     "diffusers>=0.35.2",
     "isort>=7.0.0",
     "numpy>=2.3.4",
+    "nvitop>=1.5.3",
     "py-spy>=0.4.1",
     "sentencepiece>=0.2.1",
     "torch>=2.9.0",
