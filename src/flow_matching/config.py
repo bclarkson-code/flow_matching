@@ -31,14 +31,14 @@ class Config:
     model: ModelConfig = field(default_factory=ModelConfig)
 
     learning_rate: float = 5e-4
-    weight_decay: float = 1e-2
+    weight_decay: float = 0.1
     batch_size: int = 128
     num_steps: int = 100_000
     num_repeats: int = 1_000_000
     warmup_ratio: float = 0.05
     lr_decay_ratio: float = 0.1
     shuffle_buffer_size = 100
-    gradient_clip_max_norm: float = 5.0
+    gradient_clip_max_norm: float = 1.0
     gradient_accumulation_steps: int = 1
 
     dataset_name: str = "jackyhate/text-to-image-2M"

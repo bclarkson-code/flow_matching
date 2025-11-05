@@ -15,5 +15,11 @@ vae_reconstruction_test.png
 debug.py
 data/text-to-image-2M_64x64_preprocessed.h5
 data/*
-profile.json
+*profile.json
 pytorch_trace.json
+.aim*
+.claude*
+.venv*
+.vscode*
+
+id_ed25519
