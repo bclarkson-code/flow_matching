@@ -1,3 +1,4 @@
+import subprocess
 from dataclasses import dataclass, field
 
 from hydra.core.config_store import ConfigStore
@@ -5,8 +6,6 @@ from hydra.core.config_store import ConfigStore
 
 @dataclass
 class ModelConfig:
-    """Configuration for DiffusionTransformer model architecture"""
-
     text_embed_model_string: str = "t5-small"
     image_embed_model_string: str = "stabilityai/sd-vae-ft-mse"
     embedding_dim: int = 768
@@ -26,10 +25,6 @@ class ModelConfig:
 
 @dataclass
 class TrainingConfig:
-    """
-    Configuration for optimiser and training parameters
-    """
-
     learning_rate: float = 5e-4
     weight_decay: float = 0.1
     batch_size: int = 128
@@ -42,8 +37,6 @@ class TrainingConfig:
 
 @dataclass
 class DatasetConfig:
-    """Configuration for dataset parameters"""
-
     dataset_name: str = "jackyhate/text-to-image-2M"
     dataset_path: str = "data/text-to-image-2M_64x64/"
     dataset_pattern: str = "/mnt/storage/datasets/flow_matching/text-to-image-2M_64x64_preprocessed-%06d.tar"
@@ -61,8 +54,6 @@ class DatasetConfig:
 
 @dataclass
 class LoggingConfig:
-    """Configuration for logging and evaluation"""
-
     eval_every: int = 500
     num_inference_steps: int = 50
     log_every: int = 100
@@ -73,8 +64,6 @@ class LoggingConfig:
 
 @dataclass
 class DistributedConfig:
-    """Configuration for distributed training"""
-
     distributed: bool = True
     world_size: int = 2
     backend: str = "nccl"
@@ -84,8 +73,6 @@ class DistributedConfig:
 
 @dataclass
 class CheckpointConfig:
-    """Configuration for checkpointing"""
-
     save_checkpoints: bool = True
     checkpoint_freq: int = 500
     checkpoint_dir: str = "checkpoints"
@@ -95,8 +82,6 @@ class CheckpointConfig:
 
 @dataclass
 class Config:
-    """Main configuration class"""
-
     seed: int = 0
     device: str = "cuda:0"
     resume_path: str | None = None
@@ -110,10 +95,45 @@ class Config:
 
 
 def register_configs() -> None:
-    """Register structured config schemas with Hydra's ConfigStore.
-
-    This allows Hydra to validate YAML configs against these schemas
-    and provide type safety and auto-completion.
-    """
     cs = ConfigStore.instance()
     cs.store(name="base_config", node=Config)
+
+
+def is_committed() -> bool:
+    """
+    Check that all the latest code changes are checked in
+    and pushed to GitHub for reproducibility.
+    Returns True if the working directory is clean (no uncommitted changes)
+    and the local branch is up-to-date with the remote branch.
+    """
+    try:
+        status_output = subprocess.check_output(
+            ["git", "status", "--porcelain"], text=True
+        ).strip()
+        if status_output:
+            return False
+
+        subprocess.check_call(
+            ["git", "fetch"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"], text=True
+        ).strip()
+        ahead_behind = subprocess.check_output(
+            [
+                "git",
+                "rev-list",
+                "--left-right",
+                "--count",
+                f"origin/{branch}...{branch}",
+            ],
+            text=True,
+        ).strip()
+
+        behind, ahead = map(int, ahead_behind.split())
+        return ahead == 0 and behind == 0
+
+    except subprocess.CalledProcessError:
+        return False
+    except FileNotFoundError:
+        return False

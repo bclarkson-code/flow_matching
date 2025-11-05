@@ -19,7 +19,7 @@ from flow_matching.checkpoint import (
     resume_from_checkpoint,
     save_checkpoint,
 )
-from flow_matching.config import Config, register_configs
+from flow_matching.config import Config, is_committed, register_configs
 from flow_matching.dataset import create_eval_dataset, create_train_dataset
 from flow_matching.distributed import (
     cleanup_distributed,
@@ -531,4 +531,8 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
+    if not is_committed():
+        raise ValueError(
+            "Changes must be commited and pushed before experiments can be run"
+        )
     main()
