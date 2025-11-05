@@ -9,13 +9,16 @@ dependencies = [
     "aim>=3.29.1",
     "datasets>=4.3.0",
     "diffusers>=0.35.2",
+    "hydra-core>=1.3.2",
     "isort>=7.0.0",
     "numpy>=2.3.4",
     "nvitop>=1.5.3",
     "protobuf<4.0.0",
     "py-spy>=0.4.1",
+    "ruff>=0.14.3",
     "sentencepiece>=0.2.1",
     "torch>=2.9.0",
+    "torchinfo>=1.8.0",
     "torchvision>=0.24.0",
     "tqdm>=4.67.1",
     "transformers>=4.57.1",
@@ -31,7 +34,7 @@ select = ["I"] # Enable isort rules
 
 [tool.ruff.isort]
 # Common isort-style configurations
-known-first-party = ["your_package_name"]
+known-first-party = ["flow_matching"]
 known-third-party = ["numpy", "pandas"]
 section-order = [
     "future",

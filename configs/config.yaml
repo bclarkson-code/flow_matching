@@ -1,0 +1,15 @@
+# @package _global_
+
+# Base configuration for diffusion transformer training
+# This uses structured configs defined in flow_matching.config
+# Override with experiment configs or command line arguments
+
+defaults:
+  - base_config
+  - _self_
+
+# Optional: specify experiment config from command line with +experiment=<name>
+# e.g., python train.py +experiment=debug
+
+# Optional resume path
+resume_path: null

@@ -7,9 +7,9 @@ import torch.distributed as dist
 from flow_matching.config import Config
 
 
-def setup_distributed(rank: int, world_size: int) -> None:
-    os.environ.setdefault("MASTER_ADDR", "localhost")
-    os.environ.setdefault("MASTER_PORT", "12355")
+def setup_distributed(rank: int, world_size: int, config: Config) -> None:
+    os.environ.setdefault("MASTER_ADDR", config.distributed.master_addr)
+    os.environ.setdefault("MASTER_PORT", config.distributed.master_port)
     dist.init_process_group(
         backend="nccl",
         init_method="env://",
@@ -22,7 +22,7 @@ def setup_distributed(rank: int, world_size: int) -> None:
     logging.basicConfig(
         level=logging.INFO,
         format=f"[Rank {rank}] %(asctime)s - %(levelname)s - %(message)s",
-        force=True, 
+        force=True,
     )
 
 

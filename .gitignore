@@ -21,5 +21,6 @@ pytorch_trace.json
 .claude*
 .venv*
 .vscode*
+.*
 
 id_ed25519

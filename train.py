@@ -1,4 +1,3 @@
-import argparse
 import logging
 import math
 import os
@@ -6,10 +5,11 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
+import hydra
 import numpy as np
 import torch
-import torch.multiprocessing as mp
 import webdataset as wds
+from omegaconf import DictConfig, OmegaConf
 from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm import tqdm
 
@@ -19,7 +19,7 @@ from flow_matching.checkpoint import (
     resume_from_checkpoint,
     save_checkpoint,
 )
-from flow_matching.config import Config, ConfigType
+from flow_matching.config import Config, register_configs
 from flow_matching.dataset import create_eval_dataset, create_train_dataset
 from flow_matching.distributed import (
     cleanup_distributed,
@@ -45,9 +45,9 @@ def generate_images(
         batch_size = latents.shape[0]
         generated_latents = torch.randn_like(latents)
 
-        for t_idx in range(config.num_inference_steps):
+        for t_idx in range(config.logging.num_inference_steps):
             t = torch.ones(batch_size, device=device) * (
-                t_idx / config.num_inference_steps
+                t_idx / config.logging.num_inference_steps
             )
             pred_v = model(
                 image_latents=generated_latents,
@@ -56,7 +56,7 @@ def generate_images(
                 text_mask=attention_mask,
                 time=t,
             )
-            dt = 1.0 / config.num_inference_steps
+            dt = 1.0 / config.logging.num_inference_steps
             generated_latents = generated_latents + pred_v * dt
 
         generated_images = model.image_embedder.from_latent(generated_latents)  # type: ignore
@@ -116,7 +116,7 @@ def evaluate(
     step: int,
     config: Config,
 ) -> float:
-    if not is_main_process() or config.eval_samples is None:
+    if not is_main_process() or config.dataset.eval_samples is None:
         return float("infinity")
 
     model.eval()
@@ -126,7 +126,7 @@ def evaluate(
         eval_losses = []
         generated_images_list = []
         text_input = []
-        n_batches = math.ceil(config.eval_samples / config.batch_size)
+        n_batches = math.ceil(config.dataset.eval_samples / config.training.batch_size)
 
         for batch in tqdm(
             eval_dataset, desc="Evaluating", position=1, leave=False, total=n_batches
@@ -163,8 +163,10 @@ def evaluate(
 
         avg_eval_loss = float(np.mean(eval_losses))
 
-    if config.use_wandb:
-        imgs = np.concatenate(generated_images_list)[: config.num_images_to_upload]
+    if config.logging.use_wandb:
+        imgs = np.concatenate(generated_images_list)[
+            : config.logging.num_images_to_upload
+        ]
         images_for_wandb = [wandb.Image(np.transpose(img, (1, 2, 0))) for img in imgs]
         wandb.log(
             {
@@ -192,7 +194,7 @@ def log_training_metrics(
     predicted_velocity: torch.Tensor | None = None,
     target_velocity: torch.Tensor | None = None,
 ) -> None:
-    if not is_main_process() or not config.use_wandb:
+    if not is_main_process() or not config.logging.use_wandb:
         return
     metrics = {
         "train/loss": loss,
@@ -274,7 +276,7 @@ def train_step(
     with torch.profiler.record_function("load_data"):
         batch = next(dataset)
 
-    for _ in range(config.gradient_accumulation_steps):
+    for _ in range(config.training.gradient_accumulation_steps):
         with torch.profiler.record_function("preprocess_data"):
             latents, text_embedding, attention_mask = (
                 batch["latents"].squeeze(),
@@ -295,7 +297,7 @@ def train_step(
         with torch.profiler.record_function("load_data"):
             batch = next(dataset)
 
-        loss = loss / config.gradient_accumulation_steps
+        loss = loss / config.training.gradient_accumulation_steps
 
         with torch.profiler.record_function("backward"):
             loss.backward()
@@ -305,15 +307,11 @@ def train_step(
 
     with torch.profiler.record_function("step"):
         grad_norm = torch.nn.utils.clip_grad_norm_(
-            model.parameters(), max_norm=config.gradient_clip_max_norm
+            model.parameters(), max_norm=config.training.gradient_clip_max_norm
         )
 
         optimiser.step()
         scheduler.step()
-
-    # only log tensors from the final batch so we only need to keep a single batch in memory
-    # with torch.profiler.record_function("transfer_tensors"):
-    #     tensors = {k: v.detach().cpu() for k, v in tensors.items()}
 
     with torch.profiler.record_function("log"):
         log_training_metrics(
@@ -337,7 +335,9 @@ def handle_step_logging_and_checkpointing(
     scheduler: torch.optim.lr_scheduler.SequentialLR,
     config: Config,
 ) -> None:
-    should_eval = step % config.log_every == 0 and step > 0 and is_main_process()
+    should_eval = (
+        step % config.logging.log_every == 0 and step > 0 and is_main_process()
+    )
     if not should_eval:
         return
 
@@ -353,11 +353,13 @@ def handle_step_logging_and_checkpointing(
     logger.info(f"Step {step}, Eval Loss: {eval_loss:.4f}")
 
     if not (
-        config.save_checkpoints and step % config.checkpoint_freq == 0 and step > 0
+        config.checkpoint.save_checkpoints
+        and step % config.checkpoint.checkpoint_freq == 0
+        and step > 0
     ):
         return None
 
-    cleanup_old_checkpoints(config.checkpoint_dir, config)
+    cleanup_old_checkpoints(config.checkpoint.checkpoint_dir, config)
     save_checkpoint(
         model=model,
         optimiser=optimiser,
@@ -382,7 +384,7 @@ def training_loop(
 
     pbar_context = tqdm(
         initial=start_step,
-        total=config.num_steps,
+        total=config.training.num_steps,
         desc="Training",
         position=0,
         disable=not is_main_process(),
@@ -390,7 +392,7 @@ def training_loop(
     dataset = iter(dataset)
 
     with pbar_context as pbar:
-        while step < config.num_steps:
+        while step < config.training.num_steps:
             model, loss = train_step(
                 model,
                 dataset,
@@ -426,50 +428,36 @@ def training_loop(
         logger.info(f"Final Eval Loss: {eval_loss:.4f}")
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Train diffusion transformer")
-    parser.add_argument(
-        "--resume",
-        type=str,
-        default=None,
-        help="Path to checkpoint to resume from, or 'latest' to resume from the latest checkpoint",
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default="default",
-    )
-    return parser.parse_args()
-
-
-def train_worker(rank: int, world_size: int, config: Config, args) -> float:
+def train_worker(
+    rank: int, world_size: int, config: Config, resume_path: str | None = None
+) -> float:
     torch.set_float32_matmul_precision("high")
-    if config.distributed:
-        setup_distributed(rank, world_size)
+    if config.distributed.distributed:
+        setup_distributed(rank, world_size, config)
         device = torch.device(f"cuda:{rank}")
     else:
         device = torch.device(config.device)
 
     try:
-        if config.save_checkpoints and is_main_process():
-            Path(config.checkpoint_dir).mkdir(parents=True, exist_ok=True)
+        if config.checkpoint.save_checkpoints and is_main_process():
+            Path(config.checkpoint.checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
         start_step: int = 0
 
-        if args.resume:
+        if resume_path:
             model, optimiser, scheduler, train_dataset, eval_dataset = (
-                resume_from_checkpoint(args.resume, config=config, device=device)
+                resume_from_checkpoint(resume_path, config=config, device=device)
             )
         else:
             model, optimiser, scheduler = create_model_and_optimizer(config, device)
             train_dataset = create_train_dataset(config=config)
             eval_dataset = create_eval_dataset(config=config)
 
-        if is_main_process() and config.use_wandb:
+        if is_main_process() and config.logging.use_wandb:
             wandb.init(
-                project=config.wandb_project,
+                project=config.logging.wandb_project,
                 config=asdict(config),
-                resume="allow" if args.resume else None,
+                resume="allow" if resume_path else None,
             )
 
         start_time = time.time()
@@ -488,26 +476,58 @@ def train_worker(rank: int, world_size: int, config: Config, args) -> float:
         if is_main_process():
             wandb.finish()
     finally:
-        if config.distributed:
+        if config.distributed.distributed:
             cleanup_distributed()
     return end_time - start_time
 
 
-def main():
-    args = parse_args()
-    config = ConfigType(args.config).to_config()
-    logger.info(f"Using config: {asdict(config)}")
+register_configs()
 
-    if config.distributed:
-        rank = int(os.environ["RANK"], 0)
-        world_size = int(os.environ["WORLD_SIZE"], 1)
-        local_rank = int(os.environ["LOCAL_RANK"], 1)
+
+@hydra.main(version_base=None, config_path="configs", config_name="config")
+def main(cfg: DictConfig) -> None:
+    """Main training function using Hydra for configuration management.
+
+    Args:
+        cfg: Hydra DictConfig containing all configuration parameters
+
+    Usage:
+        # Use default config
+        python train.py
+
+        # Use a specific experiment config (defined in ConfigStore)
+        python train.py +experiment=debug
+        python train.py +experiment=overfit
+        python train.py +experiment=stability
+        python train.py +experiment=hparam_tuning
+        python train.py +experiment=full_scale
+
+        # Override specific parameters
+        python train.py training.batch_size=256 training.learning_rate=1e-3
+
+        # Override nested config parameters
+        python train.py dataset.num_workers=16 logging.use_wandb=false
+
+        # Resume from checkpoint
+        python train.py resume_path=checkpoints/latest.pt
+
+        # Combine experiment with overrides
+        python train.py +experiment=debug training.num_steps=1000
+    """
+    config: Config = OmegaConf.to_object(cfg)  # type: ignore
+    logger.info(f"Using config:\n{OmegaConf.to_yaml(cfg)}")
+
+    resume_path = cfg.get("resume_path", None)
+
+    if config.distributed.distributed:
+        rank = int(os.environ.get("RANK", 0))
+        world_size = int(os.environ.get("WORLD_SIZE", 1))
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
 
         logger.info(f"Rank {rank}/{world_size}, Local rank: {local_rank}")
-        train_worker(local_rank, world_size, config, args)
+        train_worker(local_rank, world_size, config, resume_path)
     else:
-        logger.info(f"Using config: {asdict(config)}")
-        train_worker(0, 1, config, args)
+        train_worker(0, 1, config, resume_path)
 
 
 if __name__ == "__main__":

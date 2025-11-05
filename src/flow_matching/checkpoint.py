@@ -35,8 +35,8 @@ def cleanup_old_checkpoints(
 
     checkpoints.sort(reverse=True)
 
-    keep_recent = config.keep_recent_checkpoints
-    keep_every_n = config.keep_checkpoint_every_n_steps
+    keep_recent = config.checkpoint.keep_recent_checkpoints
+    keep_every_n = config.checkpoint.keep_checkpoint_every_n_steps
 
     to_keep = set()
 
@@ -90,7 +90,7 @@ def save_checkpoint(
     if not is_main_process():
         return
 
-    checkpoint_path = os.path.join(config.checkpoint_dir, f"checkpoint_step_{step}.pt")
+    checkpoint_path = os.path.join(config.checkpoint.checkpoint_dir, f"checkpoint_step_{step}.pt")
 
     model_state_dict = (
         model.module.state_dict() if isinstance(model, DDP) else model.state_dict()
@@ -151,7 +151,7 @@ def resume_from_checkpoint(
     torch.utils.data.DataLoader,
 ]:
     if resume == "latest":
-        checkpoint_path = find_latest_checkpoint(config.checkpoint_dir)
+        checkpoint_path = find_latest_checkpoint(config.checkpoint.checkpoint_dir)
     else:
         checkpoint_path = resume
     print(f"Resuming from latest checkpoint: {checkpoint_path}")

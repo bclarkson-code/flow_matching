@@ -1,0 +1,32 @@
+# @package _global_
+
+# Stability configuration
+# Medium scale run to check that the model can actually train stably for a while
+# Usage: python train.py +experiment=stability
+
+# Training parameters
+training:
+  gradient_accumulation_steps: 2
+  num_steps: 30000
+  batch_size: 128
+  learning_rate: 5e-4
+  warmup_ratio: 0.05
+
+# Dataset parameters
+dataset:
+  eval_samples: 1024
+  dataset_size: null
+
+# Logging parameters
+logging:
+  eval_every: 1000
+  num_images_to_upload: 100
+
+# Distributed training
+distributed:
+  world_size: 2
+
+# Checkpointing
+checkpoint:
+  save_checkpoints: true
+  keep_checkpoint_every_n_steps: 10000

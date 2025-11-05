@@ -1,0 +1,33 @@
+# @package _global_
+
+# Hyperparameter tuning configuration
+# Run a relatively small scale run (5k steps) to dial in hyperparameters
+# Usage: python train.py +experiment=hparam_tuning
+
+# Training parameters
+training:
+  gradient_accumulation_steps: 2
+  num_steps: 5000
+  learning_rate: 5e-4
+  gradient_clip_max_norm: 1.0
+  batch_size: 128
+
+# Dataset parameters
+dataset:
+  shuffle_buffer_size: 100000
+  dataset_size: null
+  eval_samples: 1024
+  train_dataset_pattern: "data/text-to-image-2M_64x64_preprocessed-{000001..000050}.tar"
+
+# Logging parameters
+logging:
+  log_every: 1000
+
+# Distributed training
+distributed:
+  distributed: true
+  world_size: 2
+
+# Checkpointing
+checkpoint:
+  save_checkpoints: false

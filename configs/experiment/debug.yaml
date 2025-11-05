@@ -1,0 +1,29 @@
+# @package _global_
+
+# Debug configuration for quick testing
+# Usage: python train.py +experiment=debug
+
+# Training parameters
+training:
+  gradient_accumulation_steps: 2
+  num_steps: 25
+  batch_size: 128
+
+# Dataset parameters
+dataset:
+  eval_samples: 128
+  num_workers: 4
+
+# Logging parameters
+logging:
+  eval_every: 100
+  use_wandb: true
+
+# Distributed training
+distributed:
+  distributed: false
+  world_size: 1
+
+# Checkpointing
+checkpoint:
+  save_checkpoints: false

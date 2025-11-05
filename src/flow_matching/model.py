@@ -5,10 +5,10 @@ import torch
 from diffusers.models.autoencoders.autoencoder_kl import AutoencoderKL
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
+from torchinfo import summary
 from transformers import T5EncoderModel, T5Tokenizer
 
 from flow_matching.config import Config
-from flow_matching.distributed import is_main_process
 
 
 logger = logging.getLogger()
@@ -65,7 +65,7 @@ class ImageEmbedder(torch.nn.Module):
         super().__init__()
         self.vae = AutoencoderKL.from_pretrained(config.model.image_embed_model_string)
         self.vae = torch.compile(self.vae)
-        self.vae.eval()
+        self.vae.eval()  # type: ignore
         self.patch_embedder = PatchEmbedder(config)
         self.scale_factor = config.model.vae_scale_factor
 
@@ -190,10 +190,10 @@ class DiffusionTransformer(torch.nn.Module):
 
         self.image_embedder = ImageEmbedder(config)
         self.image_embedder = torch.compile(self.image_embedder)
-        for parameter in self.image_embedder.vae.parameters():
+        for parameter in self.image_embedder.vae.parameters():  # type: ignore
             parameter.requires_grad = False
 
-        if config.include_text_embedder:
+        if config.dataset.include_text_embedder:
             self.text_embedder = TextEmbedder(config)
             for parameter in self.text_embedder.parameters():
                 parameter.requires_grad = False
@@ -262,22 +262,22 @@ class DiffusionTransformer(torch.nn.Module):
         return velocity
 
     def summary(self) -> str:
-        from torchinfo import summary
-
         dummy_image_latents = torch.randn(
-            self.config.batch_size,
+            self.config.training.batch_size,
             self.config.model.latent_channels,
             self.config.model.n_image_tokens // 8,
             self.config.model.n_image_tokens // 8,
         )
-        dummy_time = torch.randn(self.config.batch_size)
+        dummy_time = torch.randn(self.config.training.batch_size)
         dummy_text_embedding = torch.randn(
-            self.config.batch_size,
+            self.config.training.batch_size,
             self.config.model.n_text_tokens,
             self.config.model.text_embedding_dim,
         )
         dummy_text_mask = torch.ones(
-            self.config.batch_size, self.config.model.n_text_tokens, dtype=torch.bool
+            self.config.training.batch_size,
+            self.config.model.n_text_tokens,
+            dtype=torch.bool,
         )
 
         return str(
@@ -305,29 +305,31 @@ def create_model_and_optimizer(
     model = torch.compile(model)
 
     optimiser = torch.optim.AdamW(
-        model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
+        model.parameters(),  # type: ignore
+        lr=config.training.learning_rate,
+        weight_decay=config.training.weight_decay,
     )
 
-    if config.distributed:
+    if config.distributed.distributed:
         model = DDP(
             model,
             device_ids=[device.index],
             output_device=device.index,
         )
 
-    warmup_steps = int(config.warmup_ratio * config.num_steps)
+    warmup_steps = int(config.training.warmup_ratio * config.training.num_steps)
 
     warmup_scheduler = LinearLR(
         optimiser,
-        start_factor=config.lr_decay_ratio,
+        start_factor=config.training.lr_decay_ratio,
         end_factor=1.0,
         total_iters=warmup_steps,
     )
 
     cosine_scheduler = CosineAnnealingLR(
         optimiser,
-        T_max=config.num_steps - warmup_steps,
-        eta_min=config.learning_rate * config.lr_decay_ratio,
+        T_max=config.training.num_steps - warmup_steps,
+        eta_min=config.training.learning_rate * config.training.lr_decay_ratio,
     )
 
     scheduler = SequentialLR(
@@ -336,4 +338,4 @@ def create_model_and_optimizer(
         milestones=[warmup_steps],
     )
 
-    return model, optimiser, scheduler
+    return model, optimiser, scheduler  # type: ignore

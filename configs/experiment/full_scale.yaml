@@ -1,0 +1,32 @@
+# @package _global_
+
+# Full scale configuration
+# Full scale run to train the best model I can on 2 3090's
+# Usage: python train.py +experiment=full_scale
+
+# Training parameters
+training:
+  gradient_accumulation_steps: 1
+  num_steps: 300000
+  batch_size: 512
+  learning_rate: 5e-4
+  warmup_ratio: 0.05
+
+# Dataset parameters
+dataset:
+  eval_samples: 1024
+  dataset_size: null
+
+# Logging parameters
+logging:
+  eval_every: 1000
+
+# Distributed training
+distributed:
+  distributed: false
+  world_size: 1
+
+# Checkpointing
+checkpoint:
+  save_checkpoints: true
+  keep_checkpoint_every_n_steps: 50000

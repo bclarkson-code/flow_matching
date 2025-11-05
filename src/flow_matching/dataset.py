@@ -1,7 +1,5 @@
 import logging
-import math
 import random
-from functools import partial
 
 import torch
 import webdataset as wds
@@ -20,14 +18,14 @@ def create_train_dataset(
     resume_from_step: None | int = None,
 ) -> DataLoader:
     train_dataset = WebDataset(
-        config.train_dataset_pattern,
-        shardshuffle=config.shuffle_buffer_size,
-        nodesplitter=wds.split_by_node if config.distributed else None,
+        config.dataset.train_dataset_pattern,
+        shardshuffle=config.dataset.shuffle_buffer_size,
+        nodesplitter=wds.split_by_node if config.distributed.distributed else None,  # type: ignore
     )
 
     train_dataset = (
         train_dataset.decode("pilrgb")
-        .shuffle(config.shuffle_buffer_size, rng=random.Random(config.seed))
+        .shuffle(config.dataset.shuffle_buffer_size, rng=random.Random(config.seed))
         .map(
             lambda row: {
                 "latents": torch.from_numpy(row["latents.pyd"]).float(),
@@ -37,25 +35,25 @@ def create_train_dataset(
         )
     )
 
-    if config.dataset_size is not None:
-        train_dataset = train_dataset.slice(0, config.dataset_size)
+    if config.dataset.dataset_size is not None:
+        train_dataset = train_dataset.slice(0, config.dataset.dataset_size)
     if resume_from_step is not None:
         train_dataset = train_dataset.slice(resume_from_step)
 
-    train_dataset = train_dataset.batched(config.batch_size).repeat()
+    train_dataset = train_dataset.batched(config.training.batch_size).repeat()
 
     train_loader = DataLoader(
         train_dataset,
         batch_size=None,
-        num_workers=config.num_workers,
-        prefetch_factor=config.prefetch_batches,
+        num_workers=config.dataset.num_workers,
+        prefetch_factor=config.dataset.prefetch_batches,
         persistent_workers=True,
         pin_memory=True,
     )
 
     if is_main_process():
         logger.info(
-            f"Loaded WebDataset with {4} workers from {config.train_dataset_pattern}"
+            f"Loaded WebDataset with {config.dataset.num_workers} workers from {config.dataset.train_dataset_pattern}"
         )
 
     return train_loader
@@ -65,9 +63,9 @@ def create_eval_dataset(
     config: Config,
 ) -> WebDataset:
     eval_dataset = WebDataset(
-        config.eval_dataset_pattern,
+        config.dataset.eval_dataset_pattern,
         shardshuffle=False,
-        nodesplitter=wds.split_by_node if config.distributed else None,  # pyright: ignore[reportAttributeAccessIssue]
+        nodesplitter=wds.split_by_node if config.distributed.distributed else None,  # type: ignore
     )
 
     eval_dataset = eval_dataset.decode("pilrgb").map(
@@ -78,11 +76,11 @@ def create_eval_dataset(
         }
     )
 
-    if config.eval_samples is not None:
-        eval_dataset = eval_dataset.slice(config.eval_samples)
+    if config.dataset.eval_samples is not None:
+        eval_dataset = eval_dataset.slice(config.dataset.eval_samples)
 
-    eval_dataset = eval_dataset.batched(config.batch_size)
+    eval_dataset = eval_dataset.batched(config.training.batch_size)
 
     if is_main_process():
-        logger.info(f"Loaded WebDataset from {config.eval_dataset_pattern}")
+        logger.info(f"Loaded WebDataset from {config.dataset.eval_dataset_pattern}")
     return eval_dataset

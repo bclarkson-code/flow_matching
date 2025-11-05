@@ -1,0 +1,23 @@
+# @package _global_
+
+# Overfit configuration - check that we can overfit a small (4096) number of images
+# Usage: python train.py +experiment=overfit
+
+# Training parameters
+training:
+  batch_size: 128
+  gradient_accumulation_steps: 2
+  num_steps: 1000
+  learning_rate: 1e-4
+
+# Dataset parameters
+dataset:
+  dataset_size: 4096
+
+# Logging parameters
+logging:
+  eval_every: 1000
+
+# Checkpointing
+checkpoint:
+  save_checkpoints: false

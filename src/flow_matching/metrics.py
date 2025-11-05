@@ -1,8 +1,8 @@
-from torchvision.models import inception_v3, Inception_V3_Weights
-from scipy import linalg
-import numpy.typing as npt
 import numpy as np
+import numpy.typing as npt
 import torch
+from scipy import linalg
+from torchvision.models import Inception_V3_Weights, inception_v3
 
 
 def get_inception_features(images: torch.Tensor, model: torch.nn.Module) -> np.ndarray:

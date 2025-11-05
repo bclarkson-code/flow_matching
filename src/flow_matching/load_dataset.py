@@ -1,17 +1,18 @@
 import multiprocessing
-import os
 import time
 
+import hydra
 import numpy as np
 import torch
 import torchvision
 from datasets import load_dataset, load_from_disk
+from omegaconf import DictConfig, OmegaConf
 from PIL import Image
 from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
 from webdataset import ShardWriter  # type: ignore
 
-from flow_matching.config import Config, FullScaleConfig
+from flow_matching.config import Config
 from flow_matching.model import ImageEmbedder, TextEmbedder
 
 
@@ -117,7 +118,7 @@ def create_webdataset_batched(
         samples_per_shard: Number of samples per TAR file (10k is typical)
         batch_size: Number of samples to process in parallel (default: 32)
     """
-    dataset = load_dataset(config.dataset_name, split="train")
+    dataset = load_dataset(config.dataset.dataset_name, split="train")
     dataset = iter(dataset)
     print("Loading encoders...")
     text_embedder = TextEmbedder(config)
@@ -129,7 +130,7 @@ def create_webdataset_batched(
     sink = ShardWriter(output_pattern, maxcount=samples_per_shard)
     index = 0
     running = True
-    pbar = tqdm(total=config.num_datapoints)
+    pbar = tqdm(total=config.dataset.num_datapoints)
 
     while running:
         batch_samples = []
@@ -176,12 +177,17 @@ def create_webdataset_batched(
     sink.close()
 
 
-if __name__ == "__main__":
-    config = FullScaleConfig()
+@hydra.main(version_base=None, config_path="configs", config_name="config")
+def main(cfg: DictConfig) -> None:
+    config: Config = OmegaConf.to_object(cfg)  # type: ignore
     start = time.time()
     create_webdataset_batched(
-        output_pattern=config.dataset_pattern,
+        output_pattern=config.dataset.dataset_pattern,
         config=config,
     )
     duration = time.time() - start
     print(f"Took: {duration:.5f}s")
+
+
+if __name__ == "__main__":
+    main()
