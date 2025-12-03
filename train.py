@@ -123,6 +123,7 @@ def evaluate(
         eval_losses = []
         generated_images_list = []
         text_input = []
+        start = time.time()
         n_batches = math.ceil(config.dataset.eval_samples / config.training.batch_size)
 
         for batch in tqdm(
@@ -159,6 +160,7 @@ def evaluate(
             generated_images_list.append(generated_images.cpu().numpy())
 
         avg_eval_loss = float(np.mean(eval_losses))
+    duration = start - time.time()
 
     if config.logging.use_wandb:
         imgs = np.concatenate(generated_images_list)[
@@ -170,6 +172,8 @@ def evaluate(
                 "eval/loss": avg_eval_loss,
                 "eval/generated_images": images_for_wandb,
                 "eval/text_input": text_input,
+                "eval/step_duration": duration,
+                "eval/images_per_second": config.dataset.eval_samples / duration,
             },
             step=step,
         )
@@ -184,6 +188,7 @@ def log_training_metrics(
     optimiser: torch.optim.AdamW,
     step: int,
     config: Config,
+    duration: float | None = None,
     image_latents: torch.Tensor | None = None,
     noise: torch.Tensor | None = None,
     time: torch.Tensor | None = None,
@@ -252,6 +257,13 @@ def log_training_metrics(
                 "train/target_velocity_std": target_velocity.std().item(),
             }
         )
+    if duration is not None:
+        metrics.update(
+            {
+                "train/step_duration": duration,
+                "train/images_per_second": config.training.batch_size / duration,
+            }
+        )
     wandb.log(
         metrics,
         step=step,
@@ -267,6 +279,7 @@ def train_step(
     step: int,
     config: Config,
 ) -> tuple[DiffusionTransformer | DDP, torch.Tensor]:
+    start = time.time()
     optimiser.zero_grad()
 
     total_loss = torch.tensor(0.0, device=device)
@@ -284,7 +297,7 @@ def train_step(
             text_embedding = text_embedding.to(device)
             attention_mask = attention_mask.to(device)
 
-        loss, tensors = compute_loss(
+        loss, _ = compute_loss(
             model=model,
             image_latents=latents,
             text_embedding=text_embedding,
@@ -310,6 +323,7 @@ def train_step(
         optimiser.step()
         scheduler.step()
 
+    duration = time.time() - start
     with torch.profiler.record_function("log"):
         log_training_metrics(
             loss=total_loss.item(),
