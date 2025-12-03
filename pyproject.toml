@@ -30,7 +30,7 @@ dependencies = [
 reportMissingTypeStubs = false
 
 [tool.ruff]
-select = ["I"] # Enable isort rules
+lint.select = ["I"] # Enable isort rules
 
 [tool.ruff.isort]
 # Common isort-style configurations

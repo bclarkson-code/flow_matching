@@ -315,6 +315,7 @@ def create_model_and_optimizer(
             model,
             device_ids=[device.index],
             output_device=device.index,
+            find_unused_parameters=True,
         )
 
     warmup_steps = int(config.training.warmup_ratio * config.training.num_steps)

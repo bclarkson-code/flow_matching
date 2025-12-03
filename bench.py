@@ -2,13 +2,15 @@ import argparse
 import math
 import os
 import time
-from dataclasses import dataclass, replace
+from dataclasses import replace
 
+import hydra
 import torch
 import torch.multiprocessing as mp
+from omegaconf import DictConfig, OmegaConf
 from torch.profiler import ProfilerActivity
 
-from flow_matching.config import Config, ConfigType
+from flow_matching.config import Config
 from train import train_worker
 
 
@@ -25,11 +27,6 @@ def parse_args():
     return parser.parse_args()
 
 
-@dataclass
-class Args:
-    resume: bool = False
-
-
 def profile(
     config: Config,
 ) -> None:
@@ -40,13 +37,12 @@ def profile(
         num_steps=25,
         train_dataset_pattern="data/text-to-image-2M_64x64_preprocessed-{000001..00037}.tar",
     )
-    args = Args()
     with torch.profiler.profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
         record_shapes=True,
         profile_memory=True,
     ) as prof:
-        train_worker(0, 1, config, args)
+        train_worker(0, 1, config)
     prof.export_chrome_trace("pytorch_trace.json")
 
 
@@ -57,8 +53,6 @@ def try_batch_size(
     overhead: float = 0.9,
 ) -> tuple[bool, float | None, float | None]:
     os.environ["TQDM_DISABLE"] = "1"
-    # original_stdout = sys.stdout
-    # sys.stdout = open(os.devnull, "w")
 
     config = replace(
         config,
@@ -70,10 +64,9 @@ def try_batch_size(
         num_steps=5,
         train_dataset_pattern="data/text-to-image-2M_64x64_preprocessed-{000001..00037}.tar",
     )
-    args = Args()
     try:
         torch.cuda.memory._record_memory_history(max_entries=100000)
-        train_worker(0, 1, config, args)
+        train_worker(0, 1, config)
     except torch.OutOfMemoryError:
         return False, None, None
     finally:
@@ -110,55 +103,38 @@ def find_batch_size(config: Config) -> int | None:
     return best_fit
 
 
-def benchmark(config: Config) -> float:
+@hydra.main(version_base=None, config_path="configs", config_name="config")
+def benchmark(cfg: DictConfig):
     """
     Time how long it takes to pass 2**16 images through the model, with evaluation on
     2**10 images at the start and end
     """
+    config: Config = OmegaConf.to_object(cfg)  # type: ignore
+
+    world_size = int(os.environ.get("WORLD_SIZE", 1))
     images_per_step = (
-        config.batch_size * config.gradient_accumulation_steps * config.world_size
+        config.training.batch_size
+        * config.training.gradient_accumulation_steps
+        * world_size
     )
-    num_steps = math.ceil(2**11 / images_per_step)
+    num_steps = math.ceil(2**16 / images_per_step)
     print(f"Processing {images_per_step} images per step")
     print(f"Running for {num_steps} steps")
 
-    config = replace(
-        config,
-        use_wandb=False,
-        num_steps=num_steps,
-        # eval_every=num_steps,
-        # eval_samples=1024,
-        train_dataset_pattern="data/text-to-image-2M_64x64_preprocessed-{000001..00037}.tar",
-    )
-
-    args = Args()
+    config.logging.use_wandb = False
+    config.training.num_steps = num_steps
 
     start = time.time()
     if config.distributed:
-        world_size = config.world_size
-        mp.spawn(
-            train_worker,
-            args=(world_size, config, args),
-            nprocs=world_size,
-            join=True,
-        )
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
+
+        train_worker(local_rank, world_size, config)
     else:
-        train_worker(0, 1, config, args)
+        train_worker(0, 1, config)
     duration = time.time() - start
 
     print(f"Speedrun took: {duration:.3f} seconds")
-    return duration
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    config = ConfigType.FULL_SCALE.to_config()
-    match args.method:
-        case "default":
-            duration = benchmark(config)
-            print(f"Duration: {duration:.4f}f")
-        case "find_batch_size":
-            batch_size = find_batch_size(config)
-            print(f"Found batch size: {batch_size}")
-        case "profile":
-            profile(config)
+    benchmark()
