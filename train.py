@@ -93,9 +93,6 @@ def compute_loss(
             text_mask=attention_mask,
             time=time,
         )
-    recovered_latents = (
-        noisy_latents + (1 - time.view(-1, 1, 1, 1)) * predicted_velocity
-    )
 
     with torch.profiler.record_function("loss"):
         loss = torch.nn.functional.mse_loss(predicted_velocity, target_velocity)

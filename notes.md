@@ -20,3 +20,9 @@
 ID 1 is quite a bit slower than ID 0, I think this is due to the very poor
 ventilation.
 
+The goal for today is to set up a scaling ladder script. The idea is that 
+I can measure the effect of an intervention at different scales. 
+
+I added a ladder rung for the current full scale model and have started 
+training:
+$ uv run torchrun --nproc_per_node=2 train.py +experiment=scaling_ladder_large

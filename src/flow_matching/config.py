@@ -75,7 +75,7 @@ class DistributedConfig:
 class CheckpointConfig:
     save_checkpoints: bool = True
     checkpoint_freq: int = 500
-    checkpoint_dir: str = "checkpoints"
+    checkpoint_dir: str = "/mnt/storage/checkpoints/flow_matching"
     keep_recent_checkpoints: int = 5
     keep_checkpoint_every_n_steps: int = 2500
 
