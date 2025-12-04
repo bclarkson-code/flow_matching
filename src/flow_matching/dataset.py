@@ -98,7 +98,9 @@ def create_eval_dataloader(
     data_source = ArrayRecordDataSource(arrayrecord_paths)
 
     sampler = grain.IndexSampler(
-        num_records=len(data_source),
+        num_records=config.dataset.eval_samples
+        if config.dataset.eval_samples is not None
+        else len(data_source),
         num_epochs=1,
         shard_options=grain.ShardOptions(
             shard_index=rank,
