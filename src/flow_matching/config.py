@@ -41,8 +41,10 @@ class DatasetConfig:
     dataset_path: str = "data/text-to-image-2M_64x64/"
     dataset_pattern: str = "/mnt/storage/datasets/flow_matching/text-to-image-2M_64x64_preprocessed-%06d.tar"
     num_datapoints: int = 2_300_793
-    train_dataset_pattern: str = "/mnt/storage/datasets/flow_matching/text-to-image-2M_64x64_preprocessed-{000001..000230}.tar"
-    eval_dataset_pattern: str = "/mnt/storage/datasets/flow_matching/text-to-image-2M_64x64_preprocessed-000000.tar"
+    train_webdataset_pattern: str = "/mnt/storage/datasets/flow_matching/text-to-image-2M_64x64_preprocessed-{000001..000230}.tar"
+    train_arrayrecord_path: str = "/mnt/storage/datasets/flow_matching/jackyhate/train"
+    eval_webdataset_pattern: str = "/mnt/storage/datasets/flow_matching/text-to-image-2M_64x64_preprocessed-000000.tar"
+    eval_arrayrecord_path: str = "/mnt/storage/datasets/flow_matching/jackyhate/eval"
     eval_samples: int | None = 32
     dataset_size: int | None = None
     include_text_embedder: bool = False

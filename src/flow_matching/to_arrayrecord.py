@@ -7,6 +7,8 @@ import webdataset as wds
 from array_record.python.array_record_module import ArrayRecordWriter
 from tqdm import tqdm
 
+from flow_matching.config import Config
+
 
 def convert_single_shard(args: tuple[str, str, int]) -> tuple[str, int]:
     """Convert one webdataset shard to one ArrayRecord file."""
@@ -69,13 +71,13 @@ def convert_webdataset_parallel(
 
 
 if __name__ == "__main__":
-    base_dir = "/mnt/storage/datasets/flow_matching"
+    config = Config()
 
     # Train: shards 000001-000230
     print("Converting train set...")
     convert_webdataset_parallel(
-        input_pattern=f"{base_dir}/text-to-image-2M_64x64_preprocessed-{{000001..000230}}.tar",
-        output_dir=f"{base_dir}/jackyhate/train",
+        input_pattern=config.dataset.train_webdataset_pattern,
+        output_dir=config.dataset.train_arrayrecord_path,
         num_workers=31,
         desc="Train",
     )
@@ -83,8 +85,8 @@ if __name__ == "__main__":
     # Eval: shard 000000 only
     print("\nConverting eval set...")
     convert_webdataset_parallel(
-        input_pattern=f"{base_dir}/text-to-image-2M_64x64_preprocessed-000000.tar",
-        output_dir=f"{base_dir}/jackyhate/eval",
+        input_pattern=config.dataset.eval_webdataset_pattern,
+        output_dir=config.dataset.eval_arrayrecord_path,
         num_workers=1,
         desc="Eval",
     )

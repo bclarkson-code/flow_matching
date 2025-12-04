@@ -20,7 +20,7 @@ from flow_matching.checkpoint import (
     save_checkpoint,
 )
 from flow_matching.config import Config, is_committed, register_configs
-from flow_matching.dataset import create_eval_dataset, create_train_dataset
+from flow_matching.dataset import create_eval_dataloader, create_train_dataloader
 from flow_matching.distributed import (
     cleanup_distributed,
     is_main_process,
@@ -277,6 +277,7 @@ def train_step(
     for _ in range(config.training.gradient_accumulation_steps):
         with torch.profiler.record_function("load_data"):
             batch = next(dataset)
+        breakpoint()
         with torch.profiler.record_function("preprocess_data"):
             latents, text_embedding, attention_mask = (
                 batch["latents"].squeeze(),
@@ -453,9 +454,12 @@ def train_worker(
             )
         else:
             model, optimiser, scheduler = create_model_and_optimizer(config, device)
-            train_dataset = create_train_dataset(config=config)
-            eval_dataset = create_eval_dataset(config=config)
-
+            train_dataset = create_train_dataloader(
+                config, rank=rank, world_size=world_size
+            )
+            eval_dataset = create_eval_dataloader(
+                config, rank=rank, world_size=world_size
+            )
         if is_main_process() and config.logging.use_wandb:
             wandb.init(
                 project=config.logging.wandb_project,
