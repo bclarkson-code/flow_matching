@@ -347,6 +347,7 @@ def handle_step_logging_and_checkpointing(
 
     logger.info(f"Step {step}, Loss: {loss:.4f}")
 
+    model.eval()
     eval_loss = evaluate(
         model=model,
         eval_dataset=eval_dataset,
@@ -354,6 +355,9 @@ def handle_step_logging_and_checkpointing(
         step=step,
         config=config,
     )
+    model.train()
+    if torch.distributed.is_initialized():
+        torch.distributed.barrier()
     logger.info(f"Step {step}, Eval Loss: {eval_loss:.4f}")
 
     if not (
