@@ -119,7 +119,7 @@ def create_eval_dataloader(
             grain.Batch(batch_size=config.training.batch_size, drop_remainder=False),
             ToTorchTensors(),
         ],
-        worker_count=config.dataset.num_workers,
+        worker_count=0,
         worker_buffer_size=2,
     )
 
