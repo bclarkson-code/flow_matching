@@ -70,10 +70,7 @@ def compute_loss(
     text: list[str] | None = None,
     text_embedding: torch.Tensor | None = None,
     attention_mask: torch.Tensor | None = None,
-) -> tuple[
-    torch.Tensor,
-    dict[str, torch.Tensor],
-]:
+) -> torch.Tensor:
     batch_size = image_latents.shape[0]
 
     with torch.profiler.record_function("preprocess_inputs"):
@@ -96,14 +93,7 @@ def compute_loss(
 
     with torch.profiler.record_function("loss"):
         loss = torch.nn.functional.mse_loss(predicted_velocity, target_velocity)
-    return loss, {
-        "image_latents": image_latents,
-        "noise": noise,
-        "time": time,
-        "noisy_latents": noisy_latents,
-        "predicted_velocity": predicted_velocity,
-        "target_velocity": target_velocity,
-    }
+    return loss
 
 
 def evaluate(
@@ -139,7 +129,7 @@ def evaluate(
             text_embedding = text_embedding.to(device)
             attention_mask = attention_mask.to(device)
 
-            loss, _ = compute_loss(
+            loss = compute_loss(
                 model=unwrapped_model,
                 image_latents=latents,
                 text_embedding=text_embedding,
@@ -298,7 +288,7 @@ def train_step(
             attention_mask = attention_mask.to(device)
             del batch  # Free batch dict immediately after extraction
 
-        loss, _ = compute_loss(
+        loss = compute_loss(
             model=model,
             image_latents=latents,
             text_embedding=text_embedding,

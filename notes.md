@@ -44,3 +44,7 @@ Running memray was inconclusive: profiling/memory/memray-flamegraph-2025-12-04T1
 I tried removing memory pinning but that didnt work.
 
 Let me try again with scalene instead?
+That crashed during model compilation, I'll remove it.
+
+In the mean time, I wodner whether note returning tensors from compupte_loss 
+might fix things
