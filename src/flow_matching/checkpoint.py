@@ -7,7 +7,7 @@ import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from flow_matching.config import Config
-from flow_matching.dataset import create_eval_dataset, create_train_dataset
+from flow_matching.dataset import create_eval_dataloader, create_train_dataloader
 from flow_matching.distributed import is_main_process
 from flow_matching.model import DiffusionTransformer, create_model_and_optimizer
 
@@ -90,7 +90,9 @@ def save_checkpoint(
     if not is_main_process():
         return
 
-    checkpoint_path = os.path.join(config.checkpoint.checkpoint_dir, f"checkpoint_step_{step}.pt")
+    checkpoint_path = os.path.join(
+        config.checkpoint.checkpoint_dir, f"checkpoint_step_{step}.pt"
+    )
 
     model_state_dict = (
         model.module.state_dict() if isinstance(model, DDP) else model.state_dict()
@@ -162,6 +164,11 @@ def resume_from_checkpoint(
     step, model, optimiser, scheduler = load_checkpoint(
         checkpoint_path=checkpoint_path, device=device, config=config
     )
-    train_dataset = create_train_dataset(config=config, resume_from_step=step)
-    eval_dataset = create_eval_dataset(config=config)
+    train_dataset = create_train_dataloader(
+        config,
+        rank=rank,
+        world_size=world_size,
+        resume_from_step=step,
+    )
+    eval_dataset = create_eval_dataloader(config, rank=rank, world_size=world_size)
     return model, optimiser, scheduler, train_dataset, eval_dataset

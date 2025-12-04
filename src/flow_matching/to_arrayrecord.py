@@ -15,7 +15,7 @@ def convert_single_shard(args: tuple[str, str, int]) -> tuple[str, int]:
     input_tar, output_path, i = args
 
     dataset = wds.WebDataset(input_tar, shardshuffle=False).decode()
-    writer = ArrayRecordWriter(output_path)
+    writer = ArrayRecordWriter(output_path, options="group_size:1")
 
     count = 0
     for sample in tqdm(dataset, leave=False, position=i + 1, desc=str(i), total=10_000):
@@ -44,7 +44,6 @@ def convert_webdataset_parallel(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Expand the brace pattern to get individual tar paths
     tar_files = sorted(wds.shardlists.expand_urls(input_pattern))
 
     conversion_args = [
@@ -73,16 +72,14 @@ def convert_webdataset_parallel(
 if __name__ == "__main__":
     config = Config()
 
-    # Train: shards 000001-000230
     print("Converting train set...")
     convert_webdataset_parallel(
         input_pattern=config.dataset.train_webdataset_pattern,
         output_dir=config.dataset.train_arrayrecord_path,
-        num_workers=31,
+        num_workers=16,
         desc="Train",
     )
 
-    # Eval: shard 000000 only
     print("\nConverting eval set...")
     convert_webdataset_parallel(
         input_pattern=config.dataset.eval_webdataset_pattern,

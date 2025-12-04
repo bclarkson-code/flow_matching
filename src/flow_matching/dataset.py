@@ -1,4 +1,5 @@
 import io
+from pathlib import Path
 
 import grain.python as grain
 import numpy as np
@@ -12,6 +13,7 @@ class ToTorchTensors(grain.MapTransform):
     """Convert numpy arrays to torch tensors."""
 
     def map(self, sample: dict) -> dict:
+        print(sample)
         return {
             "latents": torch.from_numpy(sample["latents"]).float(),
             "text_embeds": torch.from_numpy(sample["embeds"]).float(),
@@ -36,14 +38,20 @@ def create_train_dataloader(
     config: Config,
     rank: int = 0,
     world_size: int = 1,
-) -> grain.DataLoader:
+    resume_from_step: int | None = None,
+) -> grain.DataLoader | grain.DatasetIterator:
     """Create Grain dataloader for training."""
 
-    data_source = ArrayRecordDataSource(config.dataset.train_arrayrecord_path)
+    arrayrecord_paths = sorted(
+        str(p)
+        for p in Path(config.dataset.train_arrayrecord_path).glob("*.arrayrecord")
+    )
+
+    data_source = ArrayRecordDataSource(arrayrecord_paths)
 
     sampler = grain.IndexSampler(
         num_records=len(data_source),
-        num_epochs=None,  # Infinite iteration
+        num_epochs=None,
         shard_options=grain.ShardOptions(
             shard_index=rank,
             shard_count=world_size,
@@ -65,6 +73,15 @@ def create_train_dataloader(
         worker_buffer_size=config.dataset.prefetch_batches,
     )
 
+    if resume_from_step is not None and resume_from_step > 0:
+        loader_iter = iter(loader)
+        state = loader_iter.get_state()
+        state["last_seen_indices"]["sampler"] = (
+            resume_from_step * config.training.batch_size
+        )
+        loader_iter.set_state(state)
+        return loader_iter
+
     return loader
 
 
@@ -75,9 +92,12 @@ def create_eval_dataloader(
 ) -> grain.DataLoader:
     """Create Grain dataloader for evaluation."""
 
-    data_source = ArrayRecordDataSource(config.dataset.eval_arrayrecord_path)
+    arrayrecord_paths = sorted(
+        str(p) for p in Path(config.dataset.eval_arrayrecord_path).glob("*.arrayrecord")
+    )
 
-    # For eval: no shuffle, single epoch
+    data_source = ArrayRecordDataSource(arrayrecord_paths)
+
     sampler = grain.IndexSampler(
         num_records=len(data_source),
         num_epochs=1,

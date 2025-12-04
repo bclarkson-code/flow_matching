@@ -277,7 +277,6 @@ def train_step(
     for _ in range(config.training.gradient_accumulation_steps):
         with torch.profiler.record_function("load_data"):
             batch = next(dataset)
-        breakpoint()
         with torch.profiler.record_function("preprocess_data"):
             latents, text_embedding, attention_mask = (
                 batch["latents"].squeeze(),
@@ -287,7 +286,7 @@ def train_step(
             latents = latents.to(device)
             text_embedding = text_embedding.to(device)
             attention_mask = attention_mask.to(device)
-            del batch  # Free batch dict immediately after extraction
+            del batch
 
         loss = compute_loss(
             model=model,
