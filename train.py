@@ -356,8 +356,6 @@ def handle_step_logging_and_checkpointing(
         config=config,
     )
     model.train()
-    if torch.distributed.is_initialized():
-        torch.distributed.barrier()
     logger.info(f"Step {step}, Eval Loss: {eval_loss:.4f}")
 
     if not (
@@ -436,9 +434,6 @@ def training_loop(
     model.train()
     if is_main_process():
         logger.info(f"Final Eval Loss: {eval_loss:.4f}")
-
-    if torch.distributed.is_initialized():
-        torch.distributed.barrier()
 
 
 def train_worker(
