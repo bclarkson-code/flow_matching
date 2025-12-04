@@ -278,7 +278,6 @@ def train_step(
         with torch.profiler.record_function("load_data"):
             batch = next(dataset)
         with torch.profiler.record_function("preprocess_data"):
-            breakpoint()
             latents, text_embedding, attention_mask = (
                 batch["latents"].squeeze(),
                 batch["text_embeds"].squeeze(),
