@@ -48,7 +48,7 @@ def create_train_dataset(
         num_workers=config.dataset.num_workers,
         prefetch_factor=config.dataset.prefetch_batches,
         persistent_workers=False,
-        pin_memory=True,
+        pin_memory=False,
     )
 
     if is_main_process():
