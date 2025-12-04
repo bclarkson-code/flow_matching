@@ -323,6 +323,7 @@ def train_step(
             optimiser=optimiser,
             step=step,
             config=config,
+            duration=duration,
         )
 
     return model, total_loss
