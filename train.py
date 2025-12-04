@@ -462,9 +462,8 @@ def train_worker(
             train_dataset = create_train_dataloader(
                 config, rank=rank, world_size=world_size
             )
-            eval_dataset = create_eval_dataloader(
-                config, rank=rank, world_size=world_size
-            )
+            # only run eval on the main gpu
+            eval_dataset = create_eval_dataloader(config, rank=0, world_size=1)
         if is_main_process() and config.logging.use_wandb:
             wandb.init(
                 project=config.logging.wandb_project,
