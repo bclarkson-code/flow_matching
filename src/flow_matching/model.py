@@ -261,6 +261,47 @@ class DiffusionTransformer(torch.nn.Module):
 
         return velocity
 
+    def generate_images(
+        self,
+        text: list[str] | None = None,
+        text_embedding: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        with torch.no_grad():
+            if text is not None:
+                text_embedding, attention_mask = self.text_embedder(text)  # pyright: ignore[reportOptionalCall]
+                batch_size = len(text)
+            elif text_embedding is not None and attention_mask is not None:
+                batch_size = text_embedding.shape[0]
+            else:
+                raise ValueError(
+                    "Either text or (text_embedding, attention_mask) must be provided"
+                )
+
+            latent_shape = (
+                batch_size,
+                self.config.model.latent_channels,
+                self.config.model.n_image_tokens // 8,
+                self.config.model.n_image_tokens // 8,
+            )
+            generated_latents = torch.randn(latent_shape, device=self.device)
+
+            for t_idx in range(self.config.logging.num_inference_steps):
+                t = torch.ones(batch_size, device=self.device) * (
+                    t_idx / self.config.logging.num_inference_steps
+                )
+                pred_v = self(
+                    image_latents=generated_latents,
+                    text_embedding=text_embedding,
+                    text_mask=attention_mask,
+                    time=t,
+                )
+                dt = 1.0 / self.config.logging.num_inference_steps
+                generated_latents = generated_latents + pred_v * dt
+
+            generated_images = self.image_embedder.from_latent(generated_latents)
+            return torch.clamp(generated_images, 0, 1)
+
     def summary(self) -> str:
         dummy_image_latents = torch.randn(
             self.config.training.batch_size,

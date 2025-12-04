@@ -1,9 +1,8 @@
 import os
 
-import torch
 from cleanfid import fid
 from PIL import Image
-from torchvision import datasets, transforms
+from torchvision import datasets
 from tqdm import tqdm
 
 from src.flow_matching.config import Config
@@ -48,10 +47,8 @@ def compute_real_stats(config: Config):
 
 
 def generate_images(model, config: Config, device="cuda"):
-    """Generate images using batched inference."""
     os.makedirs(config.evaluation.gen_dir, exist_ok=True)
 
-    # Build list of all prompts
     all_prompts = []
     for class_idx, class_name in enumerate(CIFAR10_CLASSES):
         prompt = f"a photo of a {class_name}"
@@ -66,21 +63,13 @@ def generate_images(model, config: Config, device="cuda"):
         batch_end = min(batch_start + batch_size, total_images)
         batch_prompts = all_prompts[batch_start:batch_end]
 
-        # Generate batch
-        with torch.no_grad():
-            images = model.generate(batch_prompts)  # Adjust to your model's API
+        images = model.generate_images(batch_prompts)
 
-        # Process and save each image
         for image in images:
-            if isinstance(image, torch.Tensor):
-                image = image.cpu()
-                # Handle [-1, 1] or [0, 1] range
-                if image.min() < 0:
-                    image = (image + 1) / 2
-                image = (image * 255).clamp(0, 255).byte()
-                image = Image.fromarray(image.permute(1, 2, 0).numpy())
+            image = image.cpu()
+            image = (image * 255).clamp(0, 255).byte()
+            image = Image.fromarray(image.permute(1, 2, 0).numpy())
 
-            # Ensure correct size
             image_size = config.dataset.image_size
             if image.size != (image_size, image_size):
                 image = image.resize((image_size, image_size), Image.BILINEAR)

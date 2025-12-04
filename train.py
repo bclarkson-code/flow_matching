@@ -32,37 +32,6 @@ from flow_matching.model import DiffusionTransformer, create_model_and_optimizer
 logger = logging.getLogger()
 
 
-def generate_images(
-    model: DiffusionTransformer,
-    latents: torch.Tensor,
-    config: Config,
-    device: torch.device,
-    text: list[str] | None = None,
-    text_embedding: torch.Tensor | None = None,
-    attention_mask: torch.Tensor | None = None,
-) -> torch.Tensor:
-    with torch.no_grad():
-        batch_size = latents.shape[0]
-        generated_latents = torch.randn_like(latents)
-
-        for t_idx in range(config.logging.num_inference_steps):
-            t = torch.ones(batch_size, device=device) * (
-                t_idx / config.logging.num_inference_steps
-            )
-            pred_v = model(
-                image_latents=generated_latents,
-                text=text,
-                text_embedding=text_embedding,
-                text_mask=attention_mask,
-                time=t,
-            )
-            dt = 1.0 / config.logging.num_inference_steps
-            generated_latents = generated_latents + pred_v * dt
-
-        generated_images = model.image_embedder.from_latent(generated_latents)  # type: ignore
-        return torch.clamp(generated_images, 0, 1)
-
-
 def compute_loss(
     model: DiffusionTransformer | DDP,
     image_latents: torch.Tensor,
@@ -137,13 +106,9 @@ def evaluate(
             )
             eval_losses.append(loss.item())
 
-            generated_images = generate_images(
-                model=unwrapped_model,
-                latents=latents,
+            generated_images = unwrapped_model.generate_images(
                 text_embedding=text_embedding,
                 attention_mask=attention_mask,
-                config=config,
-                device=device,
             )
 
             generated_images_list.append(generated_images.cpu().numpy())
