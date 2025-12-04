@@ -58,3 +58,8 @@ Claude suggested setting multiprocessing_context='spawn'. and I will.
 
 That said, I am interested in trying grain as an alternative dataset because
 it supports global shuffling and was recommended by a friend.
+
+grain seems to have fixed things! I no longer see the steadily increasing 
+memory usage, and we even get proper global shuffling. All that remains is to 
+actually run the extra small rung!
+

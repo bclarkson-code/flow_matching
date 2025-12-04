@@ -30,7 +30,6 @@ dataset:
 logging:
   eval_every: 1000
   log_every: 1000
-  use_wandb: false
 
 distributed:
   distributed: true
