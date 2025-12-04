@@ -48,3 +48,13 @@ That crashed during model compilation, I'll remove it.
 
 In the mean time, I wodner whether note returning tensors from compupte_loss 
 might fix things
+
+Nope. I'll try setting num workers to 0 to see if the problem actually is with
+the dataloaders.
+
+Looks like that fixed things! The problem is definietly in the dataloaders.
+
+Claude suggested setting multiprocessing_context='spawn'. and I will.
+
+That said, I am interested in trying grain as an alternative dataset because
+it supports global shuffling and was recommended by a friend.

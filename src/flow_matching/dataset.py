@@ -13,6 +13,22 @@ from flow_matching.distributed import is_main_process
 logger = logging.getLogger()
 
 
+def _process_train_sample(row: dict) -> dict:
+    return {
+        "latents": torch.from_numpy(row["latents.pyd"]).float(),
+        "text_embeds": torch.from_numpy(row["embeds.pyd"]).float(),
+        "attention_mask": torch.from_numpy(row["mask.pyd"]),
+    }
+
+
+def _process_eval_sample(row: dict) -> dict:
+    return {
+        "latents": torch.from_numpy(row["latents.pyd"]).float().squeeze(),
+        "text_embeds": torch.from_numpy(row["embeds.pyd"]).float().squeeze(),
+        "attention_mask": torch.from_numpy(row["mask.pyd"]).squeeze(),
+    }
+
+
 def create_train_dataset(
     config: Config,
     resume_from_step: None | int = None,
@@ -26,13 +42,7 @@ def create_train_dataset(
     train_dataset = (
         train_dataset.decode("pilrgb")
         .shuffle(config.dataset.shuffle_buffer_size, rng=random.Random(config.seed))
-        .map(
-            lambda row: {
-                "latents": torch.from_numpy(row["latents.pyd"]).float(),
-                "text_embeds": torch.from_numpy(row["embeds.pyd"]).float(),
-                "attention_mask": torch.from_numpy(row["mask.pyd"]),
-            }
-        )
+        .map(_process_train_sample)
     )
 
     if config.dataset.dataset_size is not None:
@@ -49,6 +59,7 @@ def create_train_dataset(
         prefetch_factor=config.dataset.prefetch_batches,
         persistent_workers=False,
         pin_memory=False,
+        multiprocessing_context="spawn",
     )
 
     if is_main_process():
@@ -68,13 +79,7 @@ def create_eval_dataset(
         nodesplitter=wds.split_by_node if config.distributed.distributed else None,  # type: ignore
     )
 
-    eval_dataset = eval_dataset.decode("pilrgb").map(
-        lambda row: {
-            "latents": torch.from_numpy(row["latents.pyd"]).float().squeeze(),
-            "text_embeds": torch.from_numpy(row["embeds.pyd"]).float().squeeze(),
-            "attention_mask": torch.from_numpy(row["mask.pyd"]).squeeze(),
-        }
-    )
+    eval_dataset = eval_dataset.decode("pilrgb").map(_process_eval_sample)
 
     if config.dataset.eval_samples is not None:
         eval_dataset = eval_dataset.slice(config.dataset.eval_samples)
