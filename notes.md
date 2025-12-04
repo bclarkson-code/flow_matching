@@ -26,3 +26,9 @@ I can measure the effect of an intervention at different scales.
 I added a ladder rung for the current full scale model and have started 
 training:
 $ uv run torchrun --nproc_per_node=2 train.py +experiment=scaling_ladder_large
+
+2025-12-04
+the trainig run failed due to a memory leak. I found that my machine would
+lock up when I use up all the ram so I've started runnign debugging like 
+this: 
+   `systemd-run --user --scope -p MemoryMax=48G uv run torchrun --nproc_per_node=2 train.py +experiment=scaling_ladder_extra_small`
