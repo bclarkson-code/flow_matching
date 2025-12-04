@@ -63,3 +63,8 @@ grain seems to have fixed things! I no longer see the steadily increasing
 memory usage, and we even get proper global shuffling. All that remains is to 
 actually run the extra small rung!
 
+This was successful: benclarkson/diffusion-transformer/48xlem3k
+
+However, I think I want some proper evals to measure performance against
+so next step is to build an eval script and run some benchmarks. I'll use cifar10 as an example
+

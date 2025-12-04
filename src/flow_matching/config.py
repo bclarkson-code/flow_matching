@@ -65,6 +65,15 @@ class LoggingConfig:
 
 
 @dataclass
+class EvaluationConfig:
+    batch_size: int = 32
+    images_per_class: int = 1000
+    gen_dir: str = "generated_images"
+    real_dir: str = "cifar10_resized"
+    stats_name: str = "cifar10_64"
+
+
+@dataclass
 class DistributedConfig:
     distributed: bool = True
     world_size: int = 2
@@ -92,6 +101,7 @@ class Config:
     training: TrainingConfig = field(default_factory=TrainingConfig)
     dataset: DatasetConfig = field(default_factory=DatasetConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
     distributed: DistributedConfig = field(default_factory=DistributedConfig)
     checkpoint: CheckpointConfig = field(default_factory=CheckpointConfig)
 
