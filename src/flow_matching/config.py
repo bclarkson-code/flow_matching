@@ -108,7 +108,7 @@ def is_committed() -> bool:
     """
     try:
         status_output = subprocess.check_output(
-            ["git", "status", "--porcelain"], text=True
+            ["git", "status", "--porcelain", "--", ".", ":!profiling/"], text=True
         ).strip()
         if status_output:
             return False
