@@ -10,13 +10,13 @@ from flow_matching.config import Config
 
 
 class ToTorchTensors(grain.MapTransform):
-    """Convert numpy arrays to torch tensors."""
+    """Convert numpy/SharedMemoryArray to torch tensors."""
 
-    def map(self, sample: dict) -> dict:
+    def map(self, batch: dict) -> dict:
         return {
-            "latents": torch.from_numpy(sample["latents"]).float(),
-            "text_embeds": torch.from_numpy(sample["embeds"]).float(),
-            "attention_mask": torch.from_numpy(sample["mask"]),
+            "latents": torch.as_tensor(np.asarray(batch["latents"])).float(),
+            "text_embeds": torch.as_tensor(np.asarray(batch["embeds"])).float(),
+            "attention_mask": torch.as_tensor(np.asarray(batch["mask"])),
         }
 
 
@@ -65,8 +65,8 @@ def create_train_dataloader(
         sampler=sampler,
         operations=[
             DeserializeSample(),
-            ToTorchTensors(),
             grain.Batch(batch_size=config.training.batch_size, drop_remainder=True),
+            ToTorchTensors(),
         ],
         worker_count=config.dataset.num_workers,
         worker_buffer_size=config.dataset.prefetch_batches,
@@ -114,8 +114,8 @@ def create_eval_dataloader(
         sampler=sampler,
         operations=[
             DeserializeSample(),
-            ToTorchTensors(),
             grain.Batch(batch_size=config.training.batch_size, drop_remainder=False),
+            ToTorchTensors(),
         ],
         worker_count=config.dataset.num_workers,
         worker_buffer_size=2,
