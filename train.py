@@ -296,6 +296,7 @@ def train_step(
             latents = latents.to(device)
             text_embedding = text_embedding.to(device)
             attention_mask = attention_mask.to(device)
+            del batch  # Free batch dict immediately after extraction
 
         loss, _ = compute_loss(
             model=model,
@@ -312,6 +313,9 @@ def train_step(
 
         with torch.profiler.record_function("loss"):
             total_loss += loss.detach()
+
+        # Free tensors after backward pass
+        del latents, text_embedding, attention_mask, loss
 
     with torch.profiler.record_function("step"):
         grad_norm = torch.nn.utils.clip_grad_norm_(
