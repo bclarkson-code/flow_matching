@@ -1,14 +1,18 @@
 import os
 
+import hydra
+import torch
 from cleanfid import fid
+from omegaconf import DictConfig, OmegaConf
 from PIL import Image
 from torchvision import datasets
 from tqdm import tqdm
 
-from src.flow_matching.config import Config
+from src.flow_matching.checkpoint import find_latest_checkpoint
+from src.flow_matching.config import Config, register_configs
+from src.flow_matching.model import DiffusionTransformer
 
 
-# CIFAR-10 class labels
 CIFAR10_CLASSES = [
     "airplane",
     "automobile",
@@ -21,6 +25,31 @@ CIFAR10_CLASSES = [
     "ship",
     "truck",
 ]
+
+
+def load_model_from_checkpoint(
+    checkpoint_path: str,
+    config: Config | None = None,
+    device: torch.device | str = "cuda",
+) -> DiffusionTransformer:
+    if isinstance(device, str):
+        device = torch.device(device)
+
+    print(f"Loading checkpoint from {checkpoint_path}")
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+
+    if config is None:
+        config = checkpoint["config"]
+    model = DiffusionTransformer(config)
+    model = torch.compile(model)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model = model.to(device)
+    model.eval()
+
+    step = checkpoint.get("step", "unknown")
+    print(f"Loaded model from step {step}")
+
+    return model
 
 
 def prepare_real_images(config: Config):
@@ -89,27 +118,51 @@ def compute_fid(config: Config):
     return score
 
 
-def main(model, config: Config | None = None, device="cuda"):
-    """
-    Main evaluation function.
+register_configs()
+
+
+@hydra.main(version_base=None, config_path="configs", config_name="config")
+def main(cfg: DictConfig) -> float:
+    """Main evaluation function using Hydra for configuration management.
 
     Args:
-        model: The model to evaluate
-        config: Configuration object. If None, uses default Config()
-        device: Device to use for generation
-    """
-    if config is None:
-        config = Config()
+        cfg: Hydra DictConfig containing all configuration parameters
 
-    # Step 1: Prepare real images (only need to do once)
+    Usage:
+        # Use default config with latest checkpoint
+        python evaluate.py
+
+        # Use a specific experiment config
+        python evaluate.py +experiment=debug
+        python evaluate.py +experiment=full_scale
+
+        # Override specific parameters
+        python evaluate.py evaluation.batch_size=128
+        python evaluate.py evaluation.images_per_class=100
+
+        # Specify a checkpoint path
+        python evaluate.py checkpoint_path=checkpoints/step_10000.pt
+
+        # Combine experiment with overrides
+        python evaluate.py +experiment=debug evaluation.batch_size=64
+    """
+    config: Config = OmegaConf.to_object(cfg)  # type: ignore
+    device = cfg.get("device", "cuda")
+
+    checkpoint_path = find_latest_checkpoint(config.checkpoint.checkpoint_dir)
+    if checkpoint_path is None:
+        raise FileNotFoundError(
+            f"No checkpoint found in {config.checkpoint.checkpoint_dir}"
+        )
+
+    model = load_model_from_checkpoint(checkpoint_path, device=device, config=config)
+
     if (
         not os.path.exists(config.evaluation.real_dir)
         or len(os.listdir(config.evaluation.real_dir)) == 0
     ):
         prepare_real_images(config)
 
-    # Step 2: Compute stats for real images (only need to do once)
-    # cleanfid caches stats, so this checks if they exist
     try:
         fid.compute_fid(
             config.evaluation.gen_dir,
@@ -119,17 +172,12 @@ def main(model, config: Config | None = None, device="cuda"):
     except:
         compute_real_stats(config)
 
-    # Step 3: Generate images
     generate_images(model, config, device)
 
-    # Step 4: Compute FID
     score = compute_fid(config)
     print(f"\nFID Score: {score:.2f}")
     return score
 
 
-# Usage:
-# from src.flow_matching.config import Config
-# config = Config()
-# model = YourModel().to(config.device)
-# main(model, config)
+if __name__ == "__main__":
+    main()

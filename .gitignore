@@ -25,3 +25,4 @@ pytorch_trace.json
 outputs*
 
 id_ed25519
+cifar10_resized
