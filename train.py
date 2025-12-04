@@ -106,7 +106,6 @@ def evaluate(
     if not is_main_process() or config.dataset.eval_samples is None:
         return float("infinity")
 
-    model.eval()
     with torch.no_grad():
         unwrapped_model = model.module if isinstance(model, DDP) else model
 
@@ -421,6 +420,7 @@ def training_loop(
             step += 1
             pbar.update(1)
 
+    model.eval()
     eval_loss = evaluate(
         model=model,
         eval_dataset=eval_dataset,
@@ -428,8 +428,12 @@ def training_loop(
         step=step,
         config=config,
     )
+    model.train()
     if is_main_process():
         logger.info(f"Final Eval Loss: {eval_loss:.4f}")
+
+    if torch.distributed.is_initialized():
+        torch.distributed.barrier()
 
 
 def train_worker(
