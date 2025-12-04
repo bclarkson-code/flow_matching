@@ -32,3 +32,15 @@ the trainig run failed due to a memory leak. I found that my machine would
 lock up when I use up all the ram so I've started runnign debugging like 
 this: 
    `systemd-run --user --scope -p MemoryMax=48G uv run torchrun --nproc_per_node=2 train.py +experiment=scaling_ladder_extra_small`
+that will kill the process before using up all of my ram.
+
+I want to use memray to do some memorey profiling but combining it with
+torchrun looks hard so I'm checking that I get the oom issue on a single
+process:
+   `$ systemd-run --user --scope -p MemoryMax=48G uv run python train.py +experiment=scaling_ladder_extra_small`
+
+Running memray was inconclusive: profiling/memory/memray-flamegraph-2025-12-04T11:07:20+00:00.html
+
+I tried removing memory pinning but that didnt work.
+
+Let me try again with scalene instead?
