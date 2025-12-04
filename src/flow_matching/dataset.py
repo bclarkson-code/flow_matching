@@ -13,7 +13,6 @@ class ToTorchTensors(grain.MapTransform):
     """Convert numpy arrays to torch tensors."""
 
     def map(self, sample: dict) -> dict:
-        print(sample)
         return {
             "latents": torch.from_numpy(sample["latents"]).float(),
             "text_embeds": torch.from_numpy(sample["embeds"]).float(),
