@@ -283,10 +283,10 @@ def train_step(
     optimiser.zero_grad()
 
     total_loss = torch.tensor(0.0, device=device)
-    with torch.profiler.record_function("load_data"):
-        batch = next(dataset)
 
     for _ in range(config.training.gradient_accumulation_steps):
+        with torch.profiler.record_function("load_data"):
+            batch = next(dataset)
         with torch.profiler.record_function("preprocess_data"):
             latents, text_embedding, attention_mask = (
                 batch["latents"].squeeze(),
