@@ -322,7 +322,8 @@ def train_step(
             optimiser=optimiser,
             step=step,
             config=config,
-            duration=duration,
+            # first step is really slow so we ignore it to avoid skewing stats
+            duration=duration if step > 0 else None,
         )
 
     return model, total_loss
