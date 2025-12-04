@@ -304,8 +304,6 @@ def train_step(
             attention_mask=attention_mask,
             device=device,
         )
-        with torch.profiler.record_function("load_data"):
-            batch = next(dataset)
 
         loss = loss / config.training.gradient_accumulation_steps
 

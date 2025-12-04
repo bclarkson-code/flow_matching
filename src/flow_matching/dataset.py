@@ -47,7 +47,7 @@ def create_train_dataset(
         batch_size=None,
         num_workers=config.dataset.num_workers,
         prefetch_factor=config.dataset.prefetch_batches,
-        persistent_workers=True,
+        persistent_workers=False,
         pin_memory=True,
     )
 
