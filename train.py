@@ -16,6 +16,8 @@ from tqdm import tqdm
 import wandb
 from flow_matching.checkpoint import (
     cleanup_old_checkpoints,
+    find_latest_checkpoint,
+    load_checkpoint,
     resume_from_checkpoint,
     save_checkpoint,
 )
@@ -364,6 +366,7 @@ def training_loop(
     )
     dataset = iter(dataset)
 
+    loss = torch.tensor(float("inf"))
     with pbar_context as pbar:
         while step < config.training.num_steps:
             model, loss = train_step(
@@ -398,12 +401,33 @@ def training_loop(
         step=step,
         config=config,
     )
+    handle_step_logging_and_checkpointing(
+        step=step,
+        loss=loss,
+        model=model,
+        eval_dataset=eval_dataset,
+        device=device,
+        optimiser=optimiser,
+        scheduler=scheduler,
+        config=config,
+    )
     model.train()
     if is_main_process():
         logger.info(f"Final Eval Loss: {eval_loss:.4f}")
 
 
-def run_final_evals(model, config: Config, device: torch.device) -> dict[str, float]:
+def run_final_evals(config: Config, device: torch.device) -> dict[str, float]:
+    # we want to reload from a checkpoint for reproducability but also
+    # because we want to attach the text embedder for inference
+    checkpoint_path = find_latest_checkpoint(config.checkpoint.checkpoint_dir)
+    if checkpoint_path is None:
+        raise FileNotFoundError(
+            f"No checkpoint found in {config.checkpoint.checkpoint_dir}"
+        )
+
+    model = load_checkpoint(
+        checkpoint_path, device=device, config=config, include_embedder=True
+    )
     scores = {}
     for name, dataset in load_datasets(config).items():
         logger.info(f"Evaluating against: {name}")
@@ -461,7 +485,8 @@ def train_worker(
         end_time = time.time()
 
         if is_main_process():
-            scores = run_final_evals(model, config, device)
+            del model
+            scores = run_final_evals(config, device)
             wandb.log(scores)
             wandb.finish()
     finally:

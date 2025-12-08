@@ -1,11 +1,8 @@
 import hydra
-import torch
 from omegaconf import DictConfig, OmegaConf
 
-from flow_matching.checkpoint import find_latest_checkpoint, load_model_from_checkpoint
 from flow_matching.config import Config, register_configs
-from flow_matching.eval_datasets import load_datasets
-from flow_matching.metrics import compute_fid
+from train import run_final_evals
 
 
 register_configs()
@@ -39,21 +36,7 @@ def main(cfg: DictConfig) -> dict[str, float]:
     config: Config = OmegaConf.to_object(cfg)  # type: ignore
     device = cfg.get("device", "cuda")
 
-    checkpoint_path = find_latest_checkpoint(config.checkpoint.checkpoint_dir)
-    if checkpoint_path is None:
-        raise FileNotFoundError(
-            f"No checkpoint found in {config.checkpoint.checkpoint_dir}"
-        )
-
-    model = load_model_from_checkpoint(checkpoint_path, device=device, config=config)
-
-    scores = {}
-    for name, dataset in load_datasets(config).items():
-        print(f"Evaluating against: {name}")
-        score = compute_fid(model, config, dataset, torch.device("cuda:0"))
-        print(f"\n{name}: FID Score: {score:.2f}")
-        scores[name] = score
-    return scores
+    return run_final_evals(config, device)
 
 
 if __name__ == "__main__":
