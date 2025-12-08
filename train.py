@@ -482,6 +482,7 @@ def train_worker(
                 project=config.logging.wandb_project,
                 config=asdict(config),
                 resume="allow" if resume_path else None,
+                tags=config.logging.wandb_tags,
             )
 
         start_time = time.time()

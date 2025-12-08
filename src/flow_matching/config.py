@@ -61,6 +61,7 @@ class LoggingConfig:
     log_every: int = 100
     use_wandb: bool = True
     wandb_project: str = "diffusion-transformer"
+    wandb_tags: list[str] = ["debug"]
     num_images_to_upload: int = 32
 
 
