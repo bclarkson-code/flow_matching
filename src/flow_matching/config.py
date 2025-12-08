@@ -67,10 +67,10 @@ class LoggingConfig:
 @dataclass
 class EvaluationConfig:
     batch_size: int = 32
-    images_per_class: int = 1000
-    gen_dir: str = "/mnt/storage/datasets/cifar10/generated"
-    real_dir: str = "/mnt/storage/datasets/cifar10/resized"
-    stats_name: str = "cifar10_resized_64"
+    n_eval_images: int = 10_000
+    gen_dir: str = "/mnt/storage/datasets/eval/generated"
+    real_dir: str = "/mnt/storage/datasets/eval/resized"
+    datasets: tuple[str] = ("cifar10", "coco_captions")
 
 
 @dataclass

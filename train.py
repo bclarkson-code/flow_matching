@@ -26,6 +26,8 @@ from flow_matching.distributed import (
     is_main_process,
     setup_distributed,
 )
+from flow_matching.eval_datasets import load_datasets
+from flow_matching.metrics import compute_fid
 from flow_matching.model import DiffusionTransformer, create_model_and_optimizer
 
 
@@ -401,6 +403,16 @@ def training_loop(
         logger.info(f"Final Eval Loss: {eval_loss:.4f}")
 
 
+def run_final_evals(model, config: Config, device: torch.device) -> dict[str, float]:
+    scores = {}
+    for name, dataset in load_datasets(config).items():
+        logger.info(f"Evaluating against: {name}")
+        score = compute_fid(model, config, dataset, device)
+        logger.info(f"\n{name}: FID Score: {score:.2f}")
+        scores[f"fid/{name}"] = score
+    return scores
+
+
 def train_worker(
     rank: int, world_size: int, config: Config, resume_path: str | None = None
 ) -> float:
@@ -449,6 +461,8 @@ def train_worker(
         end_time = time.time()
 
         if is_main_process():
+            scores = run_final_evals(model, config, device)
+            wandb.log(scores)
             wandb.finish()
     finally:
         if config.distributed.distributed:

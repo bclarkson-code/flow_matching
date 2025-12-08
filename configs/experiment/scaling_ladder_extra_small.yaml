@@ -27,6 +27,9 @@ dataset:
   dataset_size: null
   prefetch_batches: 2
 
+evaluation:
+  batch_size: 512
+
 logging:
   eval_every: 1000
   log_every: 1000
