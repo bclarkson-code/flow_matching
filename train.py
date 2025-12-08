@@ -17,8 +17,6 @@ from tqdm import tqdm
 import wandb
 from flow_matching.checkpoint import (
     cleanup_old_checkpoints,
-    find_latest_checkpoint,
-    load_checkpoint,
     resume_from_checkpoint,
     save_checkpoint,
 )
@@ -31,7 +29,11 @@ from flow_matching.distributed import (
 )
 from flow_matching.eval_datasets import load_datasets
 from flow_matching.metrics import compute_fid
-from flow_matching.model import DiffusionTransformer, create_model_and_optimizer
+from flow_matching.model import (
+    DiffusionTransformer,
+    TextEmbedder,
+    create_model_and_optimizer,
+)
 
 
 logger = logging.getLogger()
@@ -420,22 +422,17 @@ def training_loop(
     model.train()
     if is_main_process():
         logger.info(f"Final Eval Loss: {eval_loss:.4f}")
-        scores = run_final_evals(config, device)
+        scores = run_final_evals(model, config, device)
         if config.logging.use_wandb:
             wandb.log(scores)
 
 
-def run_final_evals(config: Config, device: torch.device) -> dict[str, float]:
-    # we want to reload from a checkpoint for reproducability but also
-    # because we want to attach the text embedder for inference
-    checkpoint_path = find_latest_checkpoint(config.checkpoint.checkpoint_dir)
-    if checkpoint_path is None:
-        raise FileNotFoundError(
-            f"No checkpoint found in {config.checkpoint.checkpoint_dir}"
-        )
-    model = load_checkpoint(
-        checkpoint_path, device=device, config=config, include_embedder=True
-    )
+def run_final_evals(model, config: Config, device: torch.device) -> dict[str, float]:
+    text_embedder = TextEmbedder(config)
+    for parameter in text_embedder.parameters():
+        parameter.requires_grad = False
+    model.text_embedder = text_embedder
+
     scores = {}
     for name, dataset in load_datasets(config).items():
         logger.info(f"Evaluating against: {name}")
