@@ -1,0 +1,43 @@
+# @package _global_
+
+# Scaling ladder rung at extra small size. 
+# Usage: 
+# uv run torchrun --nproc_per_node=2 train.py +experiment=scaling_ladder_extra_small
+
+training:
+  gradient_accumulation_steps: 1
+  # we want 10m images
+  # 10m = batch_size * world_size * num_steps
+  # => 10m / (512 * 2) = num_steps = 9765.625 ~= 10k
+  # I know we can bump this up, but I want to isolate the regularisation 
+  # effect of small batch sizes
+  num_steps: 10_000
+  batch_size: 128 
+  learning_rate: 5e-4
+  warmup_ratio: 0.05
+
+model:
+  embedding_dim: 384
+  n_blocks: 8
+  n_heads: 6
+
+dataset:
+  shuffle_buffer_size: 50000
+  eval_samples: 1024
+  dataset_size: null
+  prefetch_batches: 2
+
+evaluation:
+  batch_size: 512
+
+logging:
+  eval_every: 1000
+  log_every: 1000
+
+distributed:
+  distributed: true
+  world_size: 2
+
+checkpoint:
+  save_checkpoints: true
+  keep_checkpoint_every_n_steps: 1000
