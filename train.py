@@ -422,15 +422,7 @@ def training_loop(
         logger.info(f"Final Eval Loss: {eval_loss:.4f}")
 
 
-def run_final_evals(rank: int, world_size: int, config: Config) -> dict[str, float]:
-    if config.distributed.distributed:
-        setup_distributed(rank, world_size, config)
-        if not is_main_process():
-            return {}
-        device = torch.device(f"cuda:{rank}")
-    else:
-        device = torch.device(config.device)
-
+def run_final_evals(config: Config, device: torch.device) -> dict[str, float]:
     # we want to reload from a checkpoint for reproducability but also
     # because we want to attach the text embedder for inference
     checkpoint_path = find_latest_checkpoint(config.checkpoint.checkpoint_dir)
@@ -438,19 +430,15 @@ def run_final_evals(rank: int, world_size: int, config: Config) -> dict[str, flo
         raise FileNotFoundError(
             f"No checkpoint found in {config.checkpoint.checkpoint_dir}"
         )
-    try:
-        model = load_checkpoint(
-            checkpoint_path, device=device, config=config, include_embedder=True
-        )
-        scores = {}
-        for name, dataset in load_datasets(config).items():
-            logger.info(f"Evaluating against: {name}")
-            score = compute_fid(model, config, dataset, device)
-            logger.info(f"\n{name}: FID Score: {score:.2f}")
-            scores[f"fid/{name}"] = score
-    finally:
-        if config.distributed.distributed:
-            cleanup_distributed()
+    model = load_checkpoint(
+        checkpoint_path, device=device, config=config, include_embedder=True
+    )
+    scores = {}
+    for name, dataset in load_datasets(config).items():
+        logger.info(f"Evaluating against: {name}")
+        score = compute_fid(model, config, dataset, device)
+        logger.info(f"\n{name}: FID Score: {score:.2f}")
+        scores[f"fid/{name}"] = score
     return scores
 
 
@@ -500,6 +488,11 @@ def train_worker(
             start_step=start_step,
         )
         end_time = time.time()
+        if is_main_process():
+            scores = run_final_evals(config, device)
+            if config.logging.use_wandb:
+                wandb.log(scores)
+            wandb.finish()
     finally:
         if config.distributed.distributed:
             cleanup_distributed()
