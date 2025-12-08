@@ -5,6 +5,7 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
+import grain.python as grain
 import hydra
 import numpy as np
 import torch
@@ -71,7 +72,7 @@ def compute_loss(
 
 def evaluate(
     model: DiffusionTransformer | DDP,
-    eval_dataset: wds.WebDataset,  # pyright: ignore[reportAttributeAccessIssue]
+    eval_dataset: grain.DataLoader,
     device: torch.device,
     step: int,
     config: Config,
@@ -81,6 +82,7 @@ def evaluate(
 
     with torch.no_grad():
         unwrapped_model = model.module if isinstance(model, DDP) else model
+        model.to(device)  # just to make sure
 
         eval_losses = []
         generated_images_list = []
