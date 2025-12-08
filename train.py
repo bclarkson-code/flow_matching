@@ -541,7 +541,6 @@ def main(cfg: DictConfig) -> None:
     if config.distributed.distributed:
         logger.info(f"Rank {rank}/{world_size}, Local rank: {local_rank}")
     train_worker(local_rank, world_size, config, resume_path)
-    scores = run_final_evals(local_rank, world_size, config)
     wandb.log(scores)
     wandb.finish()
 
