@@ -9,7 +9,11 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from flow_matching.config import Config
 from flow_matching.dataset import create_eval_dataloader, create_train_dataloader
 from flow_matching.distributed import is_main_process
-from flow_matching.model import DiffusionTransformer, create_model_and_optimizer
+from flow_matching.model import (
+    DiffusionTransformer,
+    TextEmbedder,
+    create_model_and_optimizer,
+)
 
 
 def cleanup_old_checkpoints(
@@ -115,6 +119,7 @@ def load_checkpoint(
     checkpoint_path: str,
     config: Config,
     device: torch.device,
+    include_embedder: bool = False,
 ) -> tuple[
     int,
     DDP | DiffusionTransformer,
@@ -125,10 +130,17 @@ def load_checkpoint(
     model, optimiser, scheduler = create_model_and_optimizer(config, device)
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
-    if isinstance(model, DDP):
-        model.module.load_state_dict(checkpoint["model_state_dict"])
-    else:
-        model.load_state_dict(checkpoint["model_state_dict"])
+    model = DiffusionTransformer(config)
+    model = torch.compile(model)
+    model.load_state_dict(checkpoint["model_state_dict"])
+
+    if include_embedder:
+        text_embedder = TextEmbedder(config)
+        for parameter in text_embedder.parameters():
+            parameter.requires_grad = False
+        model.text_embedder = text_embedder
+
+    model = model.to(device)
 
     optimiser.load_state_dict(checkpoint["optimizer_state_dict"])
 
@@ -139,6 +151,37 @@ def load_checkpoint(
     print(f"Resumed from step {step}")
 
     return step, model, optimiser, scheduler
+
+
+def load_model_from_checkpoint(
+    checkpoint_path: str,
+    config: Config | None = None,
+    device: torch.device | str = "cuda",
+) -> DiffusionTransformer:
+    if isinstance(device, str):
+        device = torch.device(device)
+
+    print(f"Loading checkpoint from {checkpoint_path}")
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+
+    if config is None:
+        config = checkpoint["config"]
+
+    text_embedder = TextEmbedder(config)
+    for parameter in text_embedder.parameters():
+        parameter.requires_grad = False
+
+    model = DiffusionTransformer(config)
+    model = torch.compile(model)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model.text_embedder = text_embedder
+    model = model.to(device)
+    model.eval()
+
+    step = checkpoint.get("step", "unknown")
+    print(f"Loaded model from step {step}")
+
+    return model
 
 
 def resume_from_checkpoint(

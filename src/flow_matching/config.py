@@ -68,9 +68,9 @@ class LoggingConfig:
 class EvaluationConfig:
     batch_size: int = 32
     images_per_class: int = 1000
-    gen_dir: str = "generated_images"
-    real_dir: str = "cifar10_resized"
-    stats_name: str = "cifar10_64"
+    gen_dir: str = "/mnt/storage/datasets/cifar10/generated"
+    real_dir: str = "/mnt/storage/datasets/cifar10/resized"
+    stats_name: str = "cifar10_resized_64"
 
 
 @dataclass

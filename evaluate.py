@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from src.flow_matching.checkpoint import find_latest_checkpoint
 from src.flow_matching.config import Config, register_configs
-from src.flow_matching.model import DiffusionTransformer
+from src.flow_matching.model import DiffusionTransformer, TextEmbedder
 
 
 CIFAR10_CLASSES = [
@@ -40,9 +40,15 @@ def load_model_from_checkpoint(
 
     if config is None:
         config = checkpoint["config"]
+
+    text_embedder = TextEmbedder(config)
+    for parameter in text_embedder.parameters():
+        parameter.requires_grad = False
+
     model = DiffusionTransformer(config)
     model = torch.compile(model)
     model.load_state_dict(checkpoint["model_state_dict"])
+    model.text_embedder = text_embedder
     model = model.to(device)
     model.eval()
 
@@ -60,7 +66,7 @@ def prepare_real_images(config: Config):
     dataset = datasets.CIFAR10(root="./data", train=True, download=True)
 
     print("Resizing CIFAR-10 images...")
-    for idx, (image, label) in enumerate(tqdm(dataset)):
+    for idx, (image, _) in enumerate(tqdm(dataset)):
         # Resize to target size
         image_size = config.dataset.image_size
         image = image.resize((image_size, image_size), Image.BILINEAR)
@@ -69,6 +75,8 @@ def prepare_real_images(config: Config):
 
 def compute_real_stats(config: Config):
     """Compute FID statistics for the resized real images."""
+    with torch.profiler.record_function("load_data"):
+        batch = next(dataset)
     print("Computing statistics for real images...")
     fid.make_custom_stats(
         config.evaluation.stats_name, config.evaluation.real_dir, mode="clean"
@@ -92,7 +100,7 @@ def generate_images(model, config: Config, device="cuda"):
         batch_end = min(batch_start + batch_size, total_images)
         batch_prompts = all_prompts[batch_start:batch_end]
 
-        images = model.generate_images(batch_prompts)
+        images = model.generate_images(batch_prompts, device=device)
 
         for image in images:
             image = image.cpu()
@@ -112,8 +120,12 @@ def compute_fid(config: Config):
     print("Computing FID...")
     score = fid.compute_fid(
         config.evaluation.gen_dir,
+        config.evaluation.real_dir,
         dataset_name=config.evaluation.stats_name,
         mode="clean",
+        num_workers=0,
+        use_dataparallel=False,
+        device=torch.device("cuda:0"),
     )
     return score
 
@@ -163,15 +175,8 @@ def main(cfg: DictConfig) -> float:
     ):
         prepare_real_images(config)
 
-    try:
-        fid.compute_fid(
-            config.evaluation.gen_dir,
-            dataset_name=config.evaluation.stats_name,
-            mode="clean",
-        )
-    except:
+    if not fid.test_stats_exists(config.evaluation.stats_name, mode="clean"):
         compute_real_stats(config)
-
     generate_images(model, config, device)
 
     score = compute_fid(config)

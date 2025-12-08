@@ -266,6 +266,7 @@ class DiffusionTransformer(torch.nn.Module):
         text: list[str] | None = None,
         text_embedding: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
+        device: torch.device = torch.device("cpu"),
     ) -> torch.Tensor:
         with torch.no_grad():
             if text is not None:
@@ -284,10 +285,10 @@ class DiffusionTransformer(torch.nn.Module):
                 self.config.model.n_image_tokens // 8,
                 self.config.model.n_image_tokens // 8,
             )
-            generated_latents = torch.randn(latent_shape, device=self.device)
+            generated_latents = torch.randn(latent_shape, device=device)
 
             for t_idx in range(self.config.logging.num_inference_steps):
-                t = torch.ones(batch_size, device=self.device) * (
+                t = torch.ones(batch_size, device=device) * (
                     t_idx / self.config.logging.num_inference_steps
                 )
                 pred_v = self(
