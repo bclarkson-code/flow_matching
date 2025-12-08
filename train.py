@@ -422,9 +422,8 @@ def training_loop(
     model.train()
     if is_main_process():
         logger.info(f"Final Eval Loss: {eval_loss:.4f}")
-        scores = run_final_evals(model, config, device)
-        if config.logging.use_wandb:
-            wandb.log(scores)
+        run_final_evals(model, config, device)
+        wandb.finish()
 
 
 def run_final_evals(model, config: Config, device: torch.device) -> dict[str, float]:
@@ -445,6 +444,9 @@ def run_final_evals(model, config: Config, device: torch.device) -> dict[str, fl
         score = compute_fid(unwrapped_model, config, dataset, device)
         logger.info(f"\n{name}: FID Score: {score:.2f}")
         scores[f"fid/{name}"] = score
+
+    if config.logging.use_wandb:
+        wandb.log(scores)
     return scores
 
 
@@ -547,8 +549,6 @@ def main(cfg: DictConfig) -> None:
     if config.distributed.distributed:
         logger.info(f"Rank {rank}/{world_size}, Local rank: {local_rank}")
     train_worker(local_rank, world_size, config, resume_path)
-    wandb.log(scores)
-    wandb.finish()
 
 
 if __name__ == "__main__":
