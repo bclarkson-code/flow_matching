@@ -428,15 +428,16 @@ def training_loop(
 
 
 def run_final_evals(model, config: Config, device: torch.device) -> dict[str, float]:
+    unwrapped_model = model.module if isinstance(model, DDP) else model
     text_embedder = TextEmbedder(config)
     for parameter in text_embedder.parameters():
         parameter.requires_grad = False
-    model.text_embedder = text_embedder
+    unwrapped_model.text_embedder = text_embedder
 
     scores = {}
     for name, dataset in load_datasets(config).items():
         logger.info(f"Evaluating against: {name}")
-        score = compute_fid(model, config, dataset, device)
+        score = compute_fid(unwrapped_model, config, dataset, device)
         logger.info(f"\n{name}: FID Score: {score:.2f}")
         scores[f"fid/{name}"] = score
     return scores
