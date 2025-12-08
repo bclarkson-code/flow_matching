@@ -82,7 +82,10 @@ def evaluate(
 
     with torch.no_grad():
         unwrapped_model = model.module if isinstance(model, DDP) else model
-        model.to(device)  # just to make sure
+        unwrapped_model.to(device)  # just to make sure
+        unwrapped_model.image_embedder.to(device)
+        if unwrapped_model.text_embedder is not None:
+            unwrapped_model.text_embedder.to(device)
 
         eval_losses = []
         generated_images_list = []
@@ -115,6 +118,7 @@ def evaluate(
             generated_images = unwrapped_model.generate_images(
                 text_embedding=text_embedding,
                 attention_mask=attention_mask,
+                device=device,
             )
 
             generated_images_list.append(generated_images.cpu().numpy())
@@ -418,7 +422,15 @@ def training_loop(
         logger.info(f"Final Eval Loss: {eval_loss:.4f}")
 
 
-def run_final_evals(config: Config, device: torch.device) -> dict[str, float]:
+def run_final_evals(rank: int, world_size: int, config: Config) -> dict[str, float]:
+    if config.distributed.distributed:
+        setup_distributed(rank, world_size, config)
+        if not is_main_process():
+            return {}
+        device = torch.device(f"cuda:{rank}")
+    else:
+        device = torch.device(config.device)
+
     # we want to reload from a checkpoint for reproducability but also
     # because we want to attach the text embedder for inference
     checkpoint_path = find_latest_checkpoint(config.checkpoint.checkpoint_dir)
@@ -426,16 +438,19 @@ def run_final_evals(config: Config, device: torch.device) -> dict[str, float]:
         raise FileNotFoundError(
             f"No checkpoint found in {config.checkpoint.checkpoint_dir}"
         )
-
-    model = load_checkpoint(
-        checkpoint_path, device=device, config=config, include_embedder=True
-    )
-    scores = {}
-    for name, dataset in load_datasets(config).items():
-        logger.info(f"Evaluating against: {name}")
-        score = compute_fid(model, config, dataset, device)
-        logger.info(f"\n{name}: FID Score: {score:.2f}")
-        scores[f"fid/{name}"] = score
+    try:
+        model = load_checkpoint(
+            checkpoint_path, device=device, config=config, include_embedder=True
+        )
+        scores = {}
+        for name, dataset in load_datasets(config).items():
+            logger.info(f"Evaluating against: {name}")
+            score = compute_fid(model, config, dataset, device)
+            logger.info(f"\n{name}: FID Score: {score:.2f}")
+            scores[f"fid/{name}"] = score
+    finally:
+        if config.distributed.distributed:
+            cleanup_distributed()
     return scores
 
 
@@ -485,12 +500,6 @@ def train_worker(
             start_step=start_step,
         )
         end_time = time.time()
-
-        if is_main_process():
-            del model
-            scores = run_final_evals(config, device)
-            wandb.log(scores)
-            wandb.finish()
     finally:
         if config.distributed.distributed:
             cleanup_distributed()
@@ -535,15 +544,16 @@ def main(cfg: DictConfig) -> None:
 
     resume_path = cfg.get("resume_path", None)
 
-    if config.distributed.distributed:
-        rank = int(os.environ.get("RANK", 0))
-        world_size = int(os.environ.get("WORLD_SIZE", 1))
-        local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    rank = int(os.environ.get("RANK", 0))
+    world_size = int(os.environ.get("WORLD_SIZE", 1))
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
 
+    if config.distributed.distributed:
         logger.info(f"Rank {rank}/{world_size}, Local rank: {local_rank}")
-        train_worker(local_rank, world_size, config, resume_path)
-    else:
-        train_worker(0, 1, config, resume_path)
+    train_worker(local_rank, world_size, config, resume_path)
+    scores = run_final_evals(local_rank, world_size, config)
+    wandb.log(scores)
+    wandb.finish()
 
 
 if __name__ == "__main__":

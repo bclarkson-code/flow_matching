@@ -64,8 +64,6 @@ class ImageEmbedder(torch.nn.Module):
     def __init__(self, config: Config):
         super().__init__()
         self.vae = AutoencoderKL.from_pretrained(config.model.image_embed_model_string)
-        self.vae = torch.compile(self.vae)
-        self.vae.eval()  # type: ignore
         self.patch_embedder = PatchEmbedder(config)
         self.scale_factor = config.model.vae_scale_factor
 
@@ -270,6 +268,8 @@ class DiffusionTransformer(torch.nn.Module):
         with torch.no_grad():
             if text is not None:
                 text_embedding, attention_mask = self.text_embedder(text)  # pyright: ignore[reportOptionalCall]
+                text_embedding.to(device)
+                attention_mask.to(device)
                 batch_size = len(text)
             elif text_embedding is not None and attention_mask is not None:
                 batch_size = text_embedding.shape[0]

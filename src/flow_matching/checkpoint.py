@@ -153,37 +153,6 @@ def load_checkpoint(
     return step, model, optimiser, scheduler
 
 
-def load_model_from_checkpoint(
-    checkpoint_path: str,
-    config: Config | None = None,
-    device: torch.device | str = "cuda",
-) -> DiffusionTransformer:
-    if isinstance(device, str):
-        device = torch.device(device)
-
-    print(f"Loading checkpoint from {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-
-    if config is None:
-        config = checkpoint["config"]
-
-    text_embedder = TextEmbedder(config)
-    for parameter in text_embedder.parameters():
-        parameter.requires_grad = False
-
-    model = DiffusionTransformer(config)
-    model = torch.compile(model)
-    model.load_state_dict(checkpoint["model_state_dict"])
-    model.text_embedder = text_embedder
-    model = model.to(device)
-    model.eval()
-
-    step = checkpoint.get("step", "unknown")
-    print(f"Loaded model from step {step}")
-
-    return model
-
-
 def resume_from_checkpoint(
     resume: str | Literal["latest"],
     config: Config,
