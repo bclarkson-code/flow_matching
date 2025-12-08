@@ -420,6 +420,9 @@ def training_loop(
     model.train()
     if is_main_process():
         logger.info(f"Final Eval Loss: {eval_loss:.4f}")
+        scores = run_final_evals(config, device)
+        if config.logging.use_wandb:
+            wandb.log(scores)
 
 
 def run_final_evals(config: Config, device: torch.device) -> dict[str, float]:
@@ -489,9 +492,6 @@ def train_worker(
         )
         end_time = time.time()
         if is_main_process():
-            scores = run_final_evals(config, device)
-            if config.logging.use_wandb:
-                wandb.log(scores)
             wandb.finish()
     finally:
         if config.distributed.distributed:
