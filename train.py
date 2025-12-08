@@ -433,6 +433,7 @@ def run_final_evals(model, config: Config, device: torch.device) -> dict[str, fl
     for parameter in text_embedder.parameters():
         parameter.requires_grad = False
     unwrapped_model.text_embedder = text_embedder
+    unwrapped_model.to(device)
 
     scores = {}
     for name, dataset in load_datasets(config).items():
