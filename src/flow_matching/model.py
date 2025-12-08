@@ -189,7 +189,6 @@ class DiffusionTransformer(torch.nn.Module):
         self.embedding_dim = config.model.embedding_dim
 
         self.image_embedder = ImageEmbedder(config)
-        self.image_embedder = torch.compile(self.image_embedder)
         for parameter in self.image_embedder.vae.parameters():  # type: ignore
             parameter.requires_grad = False
 
