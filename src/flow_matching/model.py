@@ -290,7 +290,7 @@ class DiffusionTransformer(torch.nn.Module):
 
             for t_idx in range(self.config.logging.num_inference_steps):
                 t = torch.ones(batch_size, device=device) * (
-                    t_idx / self.config.logging.num_inference_steps
+                    (t_idx + 1) / self.config.logging.num_inference_steps
                 )
                 pred_v = self(
                     image_latents=generated_latents,
