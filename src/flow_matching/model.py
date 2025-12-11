@@ -267,7 +267,9 @@ class DiffusionTransformer(torch.nn.Module):
     ) -> torch.Tensor:
         with torch.no_grad():
             if text is not None:
-                text_embedding, attention_mask = self.text_embedder(text)  # pyright: ignore[reportOptionalCall]
+                if self.text_embedder is None:
+                    raise ValueError("text_embedder cannot be none when text is passed")
+                text_embedding, attention_mask = self.text_embedder(text)
                 text_embedding.to(device)
                 attention_mask.to(device)
                 batch_size = len(text)

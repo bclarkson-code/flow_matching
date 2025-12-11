@@ -1,6 +1,7 @@
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
+from flow_matching.checkpoint import find_latest_checkpoint, load_checkpoint
 from flow_matching.config import Config, register_configs
 from train import run_final_evals
 
@@ -36,7 +37,14 @@ def main(cfg: DictConfig) -> dict[str, float]:
     config: Config = OmegaConf.to_object(cfg)  # type: ignore
     device = cfg.get("device", "cuda")
 
-    return run_final_evals(config, device)
+    checkpoint_path = find_latest_checkpoint(config.checkpoint.checkpoint_dir)
+    config.distributed.distributed = False
+    assert checkpoint_path is not None
+    _, model, *_ = load_checkpoint(
+        checkpoint_path, config, device, include_embedder=True
+    )
+
+    return run_final_evals(model, config, device)
 
 
 if __name__ == "__main__":
