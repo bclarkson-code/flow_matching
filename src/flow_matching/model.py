@@ -343,7 +343,8 @@ def create_model_and_optimizer(
     model = DiffusionTransformer(config)
 
     model = model.to(device)
-    model = torch.compile(model)
+    if config.model.compile:
+        model = torch.compile(model)
 
     optimiser = torch.optim.AdamW(
         model.parameters(),  # type: ignore

@@ -21,6 +21,7 @@ class ModelConfig:
     patch_embed_init: float = 0.02
     final_layer_init_gain: float = 0.02
     text_max_length: int = 128
+    compile: bool = True
 
 
 @dataclass
